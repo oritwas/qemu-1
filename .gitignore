@@ -73,7 +73,10 @@ patches
 pc-bios/bios-pq/status
 pc-bios/vgabios-pq/status
 pc-bios/optionrom/linuxboot.bin
+pc-bios/optionrom/linuxboot.img
+pc-bios/optionrom/linuxboot.raw
 pc-bios/optionrom/multiboot.bin
+pc-bios/optionrom/multiboot.img
 pc-bios/optionrom/multiboot.raw
 .stgit-*
 cscope.*

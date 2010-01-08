@@ -14,7 +14,8 @@ CFLAGS += -I$(SRC_PATH)
 CFLAGS += $(call cc-option, $(CFLAGS), -fno-stack-protector)
 QEMU_CFLAGS = $(CFLAGS)
 
-build-all: multiboot.bin linuxboot.bin
+build-all: multiboot.stamp linuxboot.stamp
+.SECONDARY:
 
 # suppress auto-removal of intermediate files
 .SECONDARY:
@@ -27,6 +28,17 @@ build-all: multiboot.bin linuxboot.bin
 
 %.bin: %.raw
 	$(call quiet-command,$(SHELL) $(SRC_PATH)/scripts/signrom.sh $< $@,"  Signing $(TARGET_DIR)$@")
+
+%.stamp: %.S %.bin
+	$(call quiet-command,:,"  GEN   $@")
+	@sha1=`sha1sum < $< | awk '{print $$1}'`; \
+	if test -f "$@" && test "`cat $@`" = "$$sha1"; then \
+	  echo '$@ is unchanged'; \
+	else \
+	  echo 'Updating $(TARGETDIR)../$*.bin'; \
+	  cp $*.bin ..; \
+	fi; \
+	echo $$sha1 > $@
 
 clean:
 	rm -f *.o *.d *.raw *.img *.bin *~
