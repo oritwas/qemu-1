@@ -22,11 +22,46 @@ typedef struct VirtIOBlock
     BlockConf *conf;
     unsigned short sector_mask;
     char sn[BLOCK_SERIAL_STRLEN];
+
+    bool data_plane_started;
 } VirtIOBlock;
 
 static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
 {
     return (VirtIOBlock *)vdev;
+}
+
+static void virtio_blk_data_plane_start(VirtIOBlock *s)
+{
+    if (s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, true) != 0) {
+        fprintf(stderr, "virtio-blk failed to set host notifier\n");
+        return;
+    }
+
+    s->data_plane_started = true;
+}
+
+static void virtio_blk_data_plane_stop(VirtIOBlock *s)
+{
+    s->data_plane_started = false;
+
+    s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
+}
+
+static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
+{
+    VirtIOBlock *s = to_virtio_blk(vdev);
+
+    /* Toggle host notifier only on status change */
+    if (s->data_plane_started == !!(val & VIRTIO_CONFIG_S_DRIVER_OK)) {
+        return;
+    }
+
+    if (val & VIRTIO_CONFIG_S_DRIVER_OK) {
+        virtio_blk_data_plane_start(s);
+    } else {
+        virtio_blk_data_plane_stop(s);
+    }
 }
 
 static void virtio_blk_handle_output(VirtIODevice *vdev, VirtQueue *vq)
@@ -92,6 +127,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf)
 
     s->vdev.get_config = virtio_blk_update_config;
     s->vdev.get_features = virtio_blk_get_features;
+    s->vdev.set_status = virtio_blk_set_status;
     s->bs = conf->bs;
     s->conf = conf;
     s->sector_mask = (s->conf->logical_block_size / BDRV_SECTOR_SIZE) - 1;
@@ -104,6 +140,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf)
     strncpy(s->sn, dinfo->serial, sizeof (s->sn));
 
     s->vq = virtio_add_queue(&s->vdev, 128, virtio_blk_handle_output);
+    s->data_plane_started = false;
 
     bdrv_set_removable(s->bs, 0);
 
