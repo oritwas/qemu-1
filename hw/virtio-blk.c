@@ -61,6 +61,13 @@ static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
  */
 static inline void *phys_to_host(VirtIOBlock *s, target_phys_addr_t phys)
 {
+    /* Adjust for 3.6-4 GB PCI memory range */
+    if (phys >= 0x100000000) {
+        phys -= 0x100000000 - 0xe0000000;
+    } else if (phys >= 0xe0000000) {
+        fprintf(stderr, "phys_to_host bad physical address in PCI range %#lx\n", phys);
+        exit(1);
+    }
     return s->phys_mem_zero_host_ptr + phys;
 }
 
