@@ -11,8 +11,22 @@
  *
  */
 
-#include <qemu-common.h>
+#include <sys/epoll.h>
+#include <sys/eventfd.h>
+#include <libaio.h>
+#include "qemu-common.h"
+#include "qemu-thread.h"
 #include "virtio-blk.h"
+
+enum {
+    SEG_MAX = 126, /* maximum number of I/O segments */
+};
+
+typedef struct
+{
+    EventNotifier *notifier;        /* eventfd */
+    void (*handler)(void);          /* handler function */
+} EventHandler;
 
 typedef struct VirtIOBlock
 {
@@ -24,6 +38,13 @@ typedef struct VirtIOBlock
     char sn[BLOCK_SERIAL_STRLEN];
 
     bool data_plane_started;
+    QemuThread data_plane_thread;
+
+    int epoll_fd;                   /* epoll(2) file descriptor */
+    io_context_t io_ctx;            /* Linux AIO context */
+    EventNotifier io_notifier;      /* Linux AIO eventfd */
+    EventHandler io_handler;        /* Linux AIO completion handler */
+    EventHandler notify_handler;    /* virtqueue notify handler */
 } VirtIOBlock;
 
 static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
@@ -31,21 +52,108 @@ static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
     return (VirtIOBlock *)vdev;
 }
 
-static void virtio_blk_data_plane_start(VirtIOBlock *s)
+static void handle_io(void)
 {
+    fprintf(stderr, "io completion happened\n");
+}
+
+static void handle_notify(void)
+{
+    fprintf(stderr, "virtqueue notify happened\n");
+}
+
+static void *data_plane_thread(void *opaque)
+{
+    VirtIOBlock *s = opaque;
+    struct epoll_event event;
+    int nevents;
+    EventHandler *event_handler;
+
+    /* Signals are masked, EINTR should never happen */
+
+    for (;;) {
+        /* Wait for the next event.  Only do one event per call to keep the
+         * function simple, this could be changed later. */
+        nevents = epoll_wait(s->epoll_fd, &event, 1, -1);
+        if (unlikely(nevents != 1)) {
+            fprintf(stderr, "epoll_wait failed: %m\n");
+            continue; /* should never happen */
+        }
+
+        /* Find out which event handler has become active */
+        event_handler = event.data.ptr;
+
+        /* Clear the eventfd */
+        event_notifier_test_and_clear(event_handler->notifier);
+
+        /* Handle the event */
+        event_handler->handler();
+    }
+    return NULL;
+}
+
+static void add_event_handler(int epoll_fd, EventHandler *event_handler)
+{
+    struct epoll_event event = {
+        .events = EPOLLIN,
+        .data.ptr = event_handler,
+    };
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_notifier_get_fd(event_handler->notifier), &event) != 0) {
+        fprintf(stderr, "virtio-blk failed to add event handler to epoll: %m\n");
+        exit(1);
+    }
+}
+
+static void data_plane_start(VirtIOBlock *s)
+{
+    /* Create epoll file descriptor */
+    s->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (s->epoll_fd < 0) {
+        fprintf(stderr, "epoll_create1 failed: %m\n");
+        return; /* TODO error handling */
+    }
+
     if (s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, true) != 0) {
         fprintf(stderr, "virtio-blk failed to set host notifier\n");
-        return;
+        return; /* TODO error handling */
     }
+
+    s->notify_handler.notifier = virtio_queue_get_host_notifier(s->vq),
+    s->notify_handler.handler = handle_notify;
+    add_event_handler(s->epoll_fd, &s->notify_handler);
+
+    /* Create aio context */
+    if (io_setup(SEG_MAX, &s->io_ctx) != 0) {
+        fprintf(stderr, "virtio-blk io_setup failed\n");
+        return; /* TODO error handling */
+    }
+
+    if (event_notifier_init(&s->io_notifier, 0) != 0) {
+        fprintf(stderr, "virtio-blk io event notifier creation failed\n");
+        return; /* TODO error handling */
+    }
+
+    s->io_handler.notifier = &s->io_notifier;
+    s->io_handler.handler = handle_io;
+    add_event_handler(s->epoll_fd, &s->io_handler);
+
+    qemu_thread_create(&s->data_plane_thread, data_plane_thread, s);
 
     s->data_plane_started = true;
 }
 
-static void virtio_blk_data_plane_stop(VirtIOBlock *s)
+static void data_plane_stop(VirtIOBlock *s)
 {
     s->data_plane_started = false;
 
+    /* TODO stop data plane thread */
+
+    event_notifier_cleanup(&s->io_notifier);
+    io_destroy(s->io_ctx);
+
     s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
+
+    close(s->epoll_fd);
 }
 
 static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
@@ -58,15 +166,15 @@ static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
     }
 
     if (val & VIRTIO_CONFIG_S_DRIVER_OK) {
-        virtio_blk_data_plane_start(s);
+        data_plane_start(s);
     } else {
-        virtio_blk_data_plane_stop(s);
+        data_plane_stop(s);
     }
 }
 
 static void virtio_blk_handle_output(VirtIODevice *vdev, VirtQueue *vq)
 {
-    fprintf(stderr, "virtio_blk_handle_output: should never get here,"
+    fprintf(stderr, "virtio_blk_handle_output: should never get here, "
                     "data plane thread should process requests\n");
     exit(1);
 }
@@ -84,7 +192,7 @@ static void virtio_blk_update_config(VirtIODevice *vdev, uint8_t *config)
     bdrv_get_geometry_hint(s->bs, &cylinders, &heads, &secs);
     memset(&blkcfg, 0, sizeof(blkcfg));
     stq_raw(&blkcfg.capacity, capacity);
-    stl_raw(&blkcfg.seg_max, 128 - 2);
+    stl_raw(&blkcfg.seg_max, SEG_MAX);
     stw_raw(&blkcfg.cylinders, cylinders);
     blkcfg.heads = heads;
     blkcfg.sectors = secs & ~s->sector_mask;
@@ -139,7 +247,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf)
     dinfo = drive_get_by_blockdev(s->bs);
     strncpy(s->sn, dinfo->serial, sizeof (s->sn));
 
-    s->vq = virtio_add_queue(&s->vdev, 128, virtio_blk_handle_output);
+    s->vq = virtio_add_queue(&s->vdev, SEG_MAX + 2, virtio_blk_handle_output);
     s->data_plane_started = false;
 
     bdrv_set_removable(s->bs, 0);
