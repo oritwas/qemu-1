@@ -14,6 +14,7 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <libaio.h>
+#include <linux/virtio_ring.h>
 #include "qemu-common.h"
 #include "qemu-thread.h"
 #include "virtio-blk.h"
@@ -40,6 +41,8 @@ typedef struct VirtIOBlock
     bool data_plane_started;
     QemuThread data_plane_thread;
 
+    struct vring vring;
+
     int epoll_fd;                   /* epoll(2) file descriptor */
     io_context_t io_ctx;            /* Linux AIO context */
     EventNotifier io_notifier;      /* Linux AIO eventfd */
@@ -50,6 +53,43 @@ typedef struct VirtIOBlock
 static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
 {
     return (VirtIOBlock *)vdev;
+}
+
+/* Map the guest's vring to host memory
+ *
+ * This is not allowed but we know the ring won't move.
+ */
+static void map_vring(struct vring *vring, VirtIODevice *vdev, int n)
+{
+    target_phys_addr_t physaddr, len;
+
+    vring->num = virtio_queue_get_num(vdev, n);
+
+    physaddr = virtio_queue_get_desc_addr(vdev, n);
+    len = virtio_queue_get_desc_size(vdev, n);
+    vring->desc = cpu_physical_memory_map(physaddr, &len, 0);
+
+    physaddr = virtio_queue_get_avail_addr(vdev, n);
+    len = virtio_queue_get_avail_size(vdev, n);
+    vring->avail = cpu_physical_memory_map(physaddr, &len, 0);
+
+    physaddr = virtio_queue_get_used_addr(vdev, n);
+    len = virtio_queue_get_used_size(vdev, n);
+    vring->used = cpu_physical_memory_map(physaddr, &len, 0);
+
+    if (!vring->desc || !vring->avail || !vring->used) {
+        fprintf(stderr, "virtio-blk failed to map vring\n");
+        exit(1);
+    }
+
+    fprintf(stderr, "virtio-blk vring physical=%#lx desc=%p avail=%p used=%p\n",
+            virtio_queue_get_ring_addr(vdev, n),
+            vring->desc, vring->avail, vring->used);
+}
+
+static void unmap_vring(struct vring *vring, VirtIODevice *vdev, int n)
+{
+    cpu_physical_memory_unmap(vring->desc, virtio_queue_get_ring_size(vdev, n), 0, 0);
 }
 
 static void handle_io(void)
@@ -106,6 +146,8 @@ static void add_event_handler(int epoll_fd, EventHandler *event_handler)
 
 static void data_plane_start(VirtIOBlock *s)
 {
+    map_vring(&s->vring, &s->vdev, 0);
+
     /* Create epoll file descriptor */
     s->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
     if (s->epoll_fd < 0) {
@@ -154,6 +196,8 @@ static void data_plane_stop(VirtIOBlock *s)
     s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
 
     close(s->epoll_fd);
+
+    unmap_vring(&s->vring, &s->vdev, 0);
 }
 
 static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
