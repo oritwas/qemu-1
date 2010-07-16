@@ -48,6 +48,8 @@ typedef struct VirtIOBlock
     EventNotifier io_notifier;      /* Linux AIO eventfd */
     EventHandler io_handler;        /* Linux AIO completion handler */
     EventHandler notify_handler;    /* virtqueue notify handler */
+
+    void *phys_mem_zero_host_ptr;   /* host pointer to guest RAM */
 } VirtIOBlock;
 
 static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
@@ -55,41 +57,42 @@ static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
     return (VirtIOBlock *)vdev;
 }
 
+/* Map target physical address to host address
+ */
+static inline void *phys_to_host(VirtIOBlock *s, target_phys_addr_t phys)
+{
+    return s->phys_mem_zero_host_ptr + phys;
+}
+
+/* Setup for cheap target physical to host address conversion
+ *
+ * This is a hack for direct access to guest memory, we're not really allowed
+ * to do this.
+ */
+static void setup_phys_to_host(VirtIOBlock *s)
+{
+    target_phys_addr_t len = 4096; /* RAM is really much larger but we cheat */
+    s->phys_mem_zero_host_ptr = cpu_physical_memory_map(0, &len, 0);
+    if (!s->phys_mem_zero_host_ptr) {
+        fprintf(stderr, "setup_phys_to_host failed\n");
+        exit(1);
+    }
+}
+
 /* Map the guest's vring to host memory
  *
  * This is not allowed but we know the ring won't move.
  */
-static void map_vring(struct vring *vring, VirtIODevice *vdev, int n)
+static void map_vring(struct vring *vring, VirtIOBlock *s, VirtIODevice *vdev, int n)
 {
-    target_phys_addr_t physaddr, len;
-
     vring->num = virtio_queue_get_num(vdev, n);
-
-    physaddr = virtio_queue_get_desc_addr(vdev, n);
-    len = virtio_queue_get_desc_size(vdev, n);
-    vring->desc = cpu_physical_memory_map(physaddr, &len, 0);
-
-    physaddr = virtio_queue_get_avail_addr(vdev, n);
-    len = virtio_queue_get_avail_size(vdev, n);
-    vring->avail = cpu_physical_memory_map(physaddr, &len, 0);
-
-    physaddr = virtio_queue_get_used_addr(vdev, n);
-    len = virtio_queue_get_used_size(vdev, n);
-    vring->used = cpu_physical_memory_map(physaddr, &len, 0);
-
-    if (!vring->desc || !vring->avail || !vring->used) {
-        fprintf(stderr, "virtio-blk failed to map vring\n");
-        exit(1);
-    }
+    vring->desc = phys_to_host(s, virtio_queue_get_desc_addr(vdev, n));
+    vring->avail = phys_to_host(s, virtio_queue_get_avail_addr(vdev, n));
+    vring->used = phys_to_host(s, virtio_queue_get_used_addr(vdev, n));
 
     fprintf(stderr, "virtio-blk vring physical=%#lx desc=%p avail=%p used=%p\n",
             virtio_queue_get_ring_addr(vdev, n),
             vring->desc, vring->avail, vring->used);
-}
-
-static void unmap_vring(struct vring *vring, VirtIODevice *vdev, int n)
-{
-    cpu_physical_memory_unmap(vring->desc, virtio_queue_get_ring_size(vdev, n), 0, 0);
 }
 
 static void handle_io(void)
@@ -146,7 +149,8 @@ static void add_event_handler(int epoll_fd, EventHandler *event_handler)
 
 static void data_plane_start(VirtIOBlock *s)
 {
-    map_vring(&s->vring, &s->vdev, 0);
+    setup_phys_to_host(s);
+    map_vring(&s->vring, s, &s->vdev, 0);
 
     /* Create epoll file descriptor */
     s->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
@@ -196,8 +200,6 @@ static void data_plane_stop(VirtIOBlock *s)
     s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
 
     close(s->epoll_fd);
-
-    unmap_vring(&s->vring, &s->vdev, 0);
 }
 
 static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
