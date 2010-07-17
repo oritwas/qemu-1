@@ -76,7 +76,7 @@ static void vring_setup(Vring *vring, VirtIODevice *vdev, int n)
  * Stolen from linux-2.6/drivers/vhost/vhost.c.
  */
 static unsigned int vring_pop(Vring *vring,
-		      struct iovec iov[], unsigned int iov_size,
+		      struct iovec iov[], struct iovec *iov_end,
 		      unsigned int *out_num, unsigned int *in_num)
 {
 	struct vring_desc desc;
@@ -138,10 +138,14 @@ static unsigned int vring_pop(Vring *vring,
 				return ret;
 			}
 			continue; */
-            fprintf(stderr, "virtio-blk indirect vring not supported\n");
+            fprintf(stderr, "Indirect vring not supported\n");
             exit(1);
 		}
 
+        if (iov >= iov_end) {
+            fprintf(stderr, "Not enough vring iovecs\n");
+            exit(1);
+        }
         iov->iov_base = phys_to_host(vring, desc.addr);
         iov->iov_len  = desc.len;
         iov++;

@@ -22,6 +22,7 @@
 enum {
     SEG_MAX = 126,                  /* maximum number of I/O segments */
     VRING_MAX = SEG_MAX + 2,        /* maximum number of vring descriptors */
+    REQ_MAX = VRING_MAX / 2,        /* maximum number of requests in the vring */
 };
 
 typedef struct VirtIOBlock
@@ -55,20 +56,63 @@ static void handle_io(EventHandler *handler)
     fprintf(stderr, "io completion happened\n");
 }
 
+static void process_request(struct iovec iov[], unsigned int out_num, unsigned int in_num)
+{
+    /* Virtio block requests look like this: */
+    struct virtio_blk_outhdr *outhdr; /* iov[0] */
+    /* data[]                            ... */
+    struct virtio_blk_inhdr *inhdr;   /* iov[out_num + in_num - 1] */
+
+    if (unlikely(out_num == 0 || in_num == 0 ||
+                iov[0].iov_len != sizeof *outhdr ||
+                iov[out_num + in_num - 1].iov_len != sizeof *inhdr)) {
+        fprintf(stderr, "virtio-blk invalid request\n");
+        exit(1);
+    }
+
+    outhdr = iov[0].iov_base;
+    inhdr = iov[out_num + in_num - 1].iov_base;
+
+    fprintf(stderr, "virtio-blk request type=%#x sector=%#lx\n",
+            outhdr->type, outhdr->sector);
+}
+
 static void handle_notify(EventHandler *handler)
 {
     VirtIOBlock *s = container_of(handler, VirtIOBlock, notify_handler);
-    struct iovec iov[VRING_MAX];
-    unsigned int out_num, in_num;
-    int head;
 
-    head = vring_pop(&s->vring, iov, ARRAY_SIZE(iov), &out_num, &in_num);
-    if (unlikely(head >= vring_get_num(&s->vring))) {
-        fprintf(stderr, "false alarm, nothing on vring\n");
-        return;
+    /* There is one array of iovecs into which all new requests are extracted
+     * from the vring.  Requests are read from the vring and the translated
+     * descriptors are written to the iovecs array.  The iovecs do not have to
+     * persist across handle_notify() calls because the kernel copies the
+     * iovecs on io_submit().
+     *
+     * Handling io_submit() EAGAIN may require storing the requests across
+     * handle_notify() calls until the kernel has sufficient resources to
+     * accept more I/O.  This is not implemented yet.
+     */
+    struct iovec iovec[VRING_MAX];
+    struct iovec *iov, *end = &iovec[VRING_MAX];
+
+    /* When a request is read from the vring, the index of the first descriptor
+     * (aka head) is returned so that the completed request can be pushed onto
+     * the vring later.
+     *
+     * The number of hypervisor read-only iovecs is out_num.  The number of
+     * hypervisor write-only iovecs is in_num.
+     */
+    unsigned int head, out_num = 0, in_num = 0;
+
+    for (iov = iovec; ; iov += out_num + in_num) {
+        head = vring_pop(&s->vring, iov, end, &out_num, &in_num);
+        if (head >= vring_get_num(&s->vring)) {
+            break; /* no more requests */
+        }
+
+        fprintf(stderr, "head=%u out_num=%u in_num=%u\n", head, out_num, in_num);
+
+        process_request(iov, out_num, in_num);
     }
-
-    fprintf(stderr, "head=%u out_num=%u in_num=%u\n", head, out_num, in_num);
 }
 
 static void *data_plane_thread(void *opaque)
