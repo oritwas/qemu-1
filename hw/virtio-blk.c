@@ -11,23 +11,18 @@
  *
  */
 
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
 #include <libaio.h>
-#include <linux/virtio_ring.h>
 #include "qemu-common.h"
 #include "qemu-thread.h"
 #include "virtio-blk.h"
+#include "hw/dataplane/event-poll.h"
+#include "hw/dataplane/vring.h"
+#include "kvm.h"
 
 enum {
-    SEG_MAX = 126, /* maximum number of I/O segments */
+    SEG_MAX = 126,                  /* maximum number of I/O segments */
+    VRING_MAX = SEG_MAX + 2,        /* maximum number of vring descriptors */
 };
-
-typedef struct
-{
-    EventNotifier *notifier;        /* eventfd */
-    void (*handler)(void);          /* handler function */
-} EventHandler;
 
 typedef struct VirtIOBlock
 {
@@ -41,15 +36,13 @@ typedef struct VirtIOBlock
     bool data_plane_started;
     QemuThread data_plane_thread;
 
-    struct vring vring;
+    Vring vring;                    /* virtqueue vring */
 
-    int epoll_fd;                   /* epoll(2) file descriptor */
+    EventPoll event_poll;           /* event poller */
     io_context_t io_ctx;            /* Linux AIO context */
     EventNotifier io_notifier;      /* Linux AIO eventfd */
     EventHandler io_handler;        /* Linux AIO completion handler */
     EventHandler notify_handler;    /* virtqueue notify handler */
-
-    void *phys_mem_zero_host_ptr;   /* host pointer to guest RAM */
 } VirtIOBlock;
 
 static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
@@ -57,138 +50,64 @@ static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
     return (VirtIOBlock *)vdev;
 }
 
-/* Map target physical address to host address
- */
-static inline void *phys_to_host(VirtIOBlock *s, target_phys_addr_t phys)
-{
-    /* Adjust for 3.6-4 GB PCI memory range */
-    if (phys >= 0x100000000) {
-        phys -= 0x100000000 - 0xe0000000;
-    } else if (phys >= 0xe0000000) {
-        fprintf(stderr, "phys_to_host bad physical address in PCI range %#lx\n", phys);
-        exit(1);
-    }
-    return s->phys_mem_zero_host_ptr + phys;
-}
-
-/* Setup for cheap target physical to host address conversion
- *
- * This is a hack for direct access to guest memory, we're not really allowed
- * to do this.
- */
-static void setup_phys_to_host(VirtIOBlock *s)
-{
-    target_phys_addr_t len = 4096; /* RAM is really much larger but we cheat */
-    s->phys_mem_zero_host_ptr = cpu_physical_memory_map(0, &len, 0);
-    if (!s->phys_mem_zero_host_ptr) {
-        fprintf(stderr, "setup_phys_to_host failed\n");
-        exit(1);
-    }
-}
-
-/* Map the guest's vring to host memory
- *
- * This is not allowed but we know the ring won't move.
- */
-static void map_vring(struct vring *vring, VirtIOBlock *s, VirtIODevice *vdev, int n)
-{
-    vring->num = virtio_queue_get_num(vdev, n);
-    vring->desc = phys_to_host(s, virtio_queue_get_desc_addr(vdev, n));
-    vring->avail = phys_to_host(s, virtio_queue_get_avail_addr(vdev, n));
-    vring->used = phys_to_host(s, virtio_queue_get_used_addr(vdev, n));
-
-    fprintf(stderr, "virtio-blk vring physical=%#lx desc=%p avail=%p used=%p\n",
-            virtio_queue_get_ring_addr(vdev, n),
-            vring->desc, vring->avail, vring->used);
-}
-
-static void handle_io(void)
+static void handle_io(EventHandler *handler)
 {
     fprintf(stderr, "io completion happened\n");
 }
 
-static void handle_notify(void)
+static void handle_notify(EventHandler *handler)
 {
-    fprintf(stderr, "virtqueue notify happened\n");
+    VirtIOBlock *s = container_of(handler, VirtIOBlock, notify_handler);
+    struct iovec iov[VRING_MAX];
+    unsigned int out_num, in_num;
+    int head;
+
+    head = vring_pop(&s->vring, iov, ARRAY_SIZE(iov), &out_num, &in_num);
+    if (unlikely(head >= vring_get_num(&s->vring))) {
+        fprintf(stderr, "false alarm, nothing on vring\n");
+        return;
+    }
+
+    fprintf(stderr, "head=%u out_num=%u in_num=%u\n", head, out_num, in_num);
 }
 
 static void *data_plane_thread(void *opaque)
 {
     VirtIOBlock *s = opaque;
-    struct epoll_event event;
-    int nevents;
-    EventHandler *event_handler;
-
-    /* Signals are masked, EINTR should never happen */
 
     for (;;) {
-        /* Wait for the next event.  Only do one event per call to keep the
-         * function simple, this could be changed later. */
-        nevents = epoll_wait(s->epoll_fd, &event, 1, -1);
-        if (unlikely(nevents != 1)) {
-            fprintf(stderr, "epoll_wait failed: %m\n");
-            continue; /* should never happen */
-        }
-
-        /* Find out which event handler has become active */
-        event_handler = event.data.ptr;
-
-        /* Clear the eventfd */
-        event_notifier_test_and_clear(event_handler->notifier);
-
-        /* Handle the event */
-        event_handler->handler();
+        event_poll(&s->event_poll);
     }
     return NULL;
 }
 
-static void add_event_handler(int epoll_fd, EventHandler *event_handler)
-{
-    struct epoll_event event = {
-        .events = EPOLLIN,
-        .data.ptr = event_handler,
-    };
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_notifier_get_fd(event_handler->notifier), &event) != 0) {
-        fprintf(stderr, "virtio-blk failed to add event handler to epoll: %m\n");
-        exit(1);
-    }
-}
-
 static void data_plane_start(VirtIOBlock *s)
 {
-    setup_phys_to_host(s);
-    map_vring(&s->vring, s, &s->vdev, 0);
+    vring_setup(&s->vring, &s->vdev, 0);
 
-    /* Create epoll file descriptor */
-    s->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-    if (s->epoll_fd < 0) {
-        fprintf(stderr, "epoll_create1 failed: %m\n");
-        return; /* TODO error handling */
-    }
+    event_poll_init(&s->event_poll);
 
     if (s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, true) != 0) {
-        fprintf(stderr, "virtio-blk failed to set host notifier\n");
-        return; /* TODO error handling */
+        fprintf(stderr, "virtio-blk failed to set host notifier, ensure -enable-kvm is set\n");
+        exit(1);
     }
 
-    s->notify_handler.notifier = virtio_queue_get_host_notifier(s->vq),
-    s->notify_handler.handler = handle_notify;
-    add_event_handler(s->epoll_fd, &s->notify_handler);
+    event_poll_add(&s->event_poll, &s->notify_handler,
+                   virtio_queue_get_host_notifier(s->vq),
+                   handle_notify);
 
     /* Create aio context */
     if (io_setup(SEG_MAX, &s->io_ctx) != 0) {
         fprintf(stderr, "virtio-blk io_setup failed\n");
-        return; /* TODO error handling */
+        exit(1);
     }
 
     if (event_notifier_init(&s->io_notifier, 0) != 0) {
         fprintf(stderr, "virtio-blk io event notifier creation failed\n");
-        return; /* TODO error handling */
+        exit(1);
     }
 
-    s->io_handler.notifier = &s->io_notifier;
-    s->io_handler.handler = handle_io;
-    add_event_handler(s->epoll_fd, &s->io_handler);
+    event_poll_add(&s->event_poll, &s->io_handler, &s->io_notifier, handle_io);
 
     qemu_thread_create(&s->data_plane_thread, data_plane_thread, s);
 
@@ -206,7 +125,7 @@ static void data_plane_stop(VirtIOBlock *s)
 
     s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
 
-    close(s->epoll_fd);
+    event_poll_cleanup(&s->event_poll);
 }
 
 static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
@@ -300,7 +219,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf)
     dinfo = drive_get_by_blockdev(s->bs);
     strncpy(s->sn, dinfo->serial, sizeof (s->sn));
 
-    s->vq = virtio_add_queue(&s->vdev, SEG_MAX + 2, virtio_blk_handle_output);
+    s->vq = virtio_add_queue(&s->vdev, VRING_MAX, virtio_blk_handle_output);
     s->data_plane_started = false;
 
     bdrv_set_removable(s->bs, 0);
