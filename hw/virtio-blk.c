@@ -17,6 +17,7 @@
 #include "virtio-blk.h"
 #include "hw/dataplane/event-poll.h"
 #include "hw/dataplane/vring.h"
+#include "hw/dataplane/ioq.h"
 #include "kvm.h"
 
 enum {
@@ -39,9 +40,9 @@ typedef struct VirtIOBlock
 
     Vring vring;                    /* virtqueue vring */
 
+    IOQueue ioqueue;                /* Linux AIO queue (should really be per dataplane thread) */
+
     EventPoll event_poll;           /* event poller */
-    io_context_t io_ctx;            /* Linux AIO context */
-    EventNotifier io_notifier;      /* Linux AIO eventfd */
     EventHandler io_handler;        /* Linux AIO completion handler */
     EventHandler notify_handler;    /* virtqueue notify handler */
 } VirtIOBlock;
@@ -125,6 +126,14 @@ static void *data_plane_thread(void *opaque)
     return NULL;
 }
 
+/* Normally the block driver passes down the fd, there's no way to get it from
+ * above.
+ */
+static int get_raw_posix_fd_hack(VirtIOBlock *s)
+{
+    return *(int*)s->bs->file->opaque;
+}
+
 static void data_plane_start(VirtIOBlock *s)
 {
     vring_setup(&s->vring, &s->vdev, 0);
@@ -135,23 +144,13 @@ static void data_plane_start(VirtIOBlock *s)
         fprintf(stderr, "virtio-blk failed to set host notifier, ensure -enable-kvm is set\n");
         exit(1);
     }
-
     event_poll_add(&s->event_poll, &s->notify_handler,
                    virtio_queue_get_host_notifier(s->vq),
                    handle_notify);
 
-    /* Create aio context */
-    if (io_setup(SEG_MAX, &s->io_ctx) != 0) {
-        fprintf(stderr, "virtio-blk io_setup failed\n");
-        exit(1);
-    }
-
-    if (event_notifier_init(&s->io_notifier, 0) != 0) {
-        fprintf(stderr, "virtio-blk io event notifier creation failed\n");
-        exit(1);
-    }
-
-    event_poll_add(&s->event_poll, &s->io_handler, &s->io_notifier, handle_io);
+    ioq_init(&s->ioqueue, get_raw_posix_fd_hack(s), REQ_MAX);
+    /* TODO populate ioqueue freelist */
+    event_poll_add(&s->event_poll, &s->io_handler, ioq_get_notifier(&s->ioqueue), handle_io);
 
     qemu_thread_create(&s->data_plane_thread, data_plane_thread, s);
 
@@ -164,8 +163,7 @@ static void data_plane_stop(VirtIOBlock *s)
 
     /* TODO stop data plane thread */
 
-    event_notifier_cleanup(&s->io_notifier);
-    io_destroy(s->io_ctx);
+    ioq_cleanup(&s->ioqueue);
 
     s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
 
