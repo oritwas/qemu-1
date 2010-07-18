@@ -56,8 +56,8 @@ static void vring_setup(Vring *vring, VirtIODevice *vdev, int n)
     vring_init(&vring->vr, virtio_queue_get_num(vdev, n),
                phys_to_host(vring, virtio_queue_get_ring_addr(vdev, n)), 4096);
 
-    vring->last_avail_idx = vring->vr.avail->idx;
-    vring->last_used_idx = vring->vr.used->idx;
+    vring->last_avail_idx = 0;
+    vring->last_used_idx = 0;
 
     fprintf(stderr, "vring physical=%#lx desc=%p avail=%p used=%p\n",
             virtio_queue_get_ring_addr(vdev, n),
@@ -176,7 +176,7 @@ static unsigned int vring_pop(Vring *vring,
  *
  * Stolen from linux-2.6/drivers/vhost/vhost.c.
  */
-static __attribute__((unused)) void vring_push(Vring *vring, unsigned int head, int len)
+static void vring_push(Vring *vring, unsigned int head, int len)
 {
 	struct vring_used_elem *used;
 

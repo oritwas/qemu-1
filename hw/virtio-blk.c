@@ -26,8 +26,13 @@ enum {
     REQ_MAX = VRING_MAX / 2,        /* maximum number of requests in the vring */
 };
 
-typedef struct VirtIOBlock
-{
+typedef struct {
+    struct iocb iocb;               /* Linux AIO control block */
+    unsigned char *status;          /* virtio block status code */
+    unsigned int head;              /* vring descriptor index */
+} VirtIOBlockRequest;
+
+typedef struct {
     VirtIODevice vdev;
     BlockDriverState *bs;
     VirtQueue *vq;
@@ -40,11 +45,12 @@ typedef struct VirtIOBlock
 
     Vring vring;                    /* virtqueue vring */
 
-    IOQueue ioqueue;                /* Linux AIO queue (should really be per dataplane thread) */
-
     EventPoll event_poll;           /* event poller */
     EventHandler io_handler;        /* Linux AIO completion handler */
     EventHandler notify_handler;    /* virtqueue notify handler */
+
+    IOQueue ioqueue;                /* Linux AIO queue (should really be per dataplane thread) */
+    VirtIOBlockRequest requests[REQ_MAX]; /* pool of requests, managed by the queue */
 } VirtIOBlock;
 
 static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
@@ -52,12 +58,40 @@ static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
     return (VirtIOBlock *)vdev;
 }
 
-static void handle_io(EventHandler *handler)
+static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
 {
-    fprintf(stderr, "io completion happened\n");
+    VirtIOBlock *s = opaque;
+    VirtIOBlockRequest *req = container_of(iocb, VirtIOBlockRequest, iocb);
+    int len;
+
+    if (likely(ret >= 0)) {
+        *req->status = VIRTIO_BLK_S_OK;
+        len = ret;
+    } else {
+        *req->status = VIRTIO_BLK_S_IOERR;
+        len = 0;
+    }
+
+    /* According to the virtio specification len should be the number of bytes
+     * written to, but for virtio-blk it seems to be the number of bytes
+     * transferred plus the status bytes.
+     */
+    vring_push(&s->vring, req->head, len + sizeof req->status);
 }
 
-static void process_request(struct iovec iov[], unsigned int out_num, unsigned int in_num)
+static bool handle_io(EventHandler *handler)
+{
+    VirtIOBlock *s = container_of(handler, VirtIOBlock, io_handler);
+
+    if (ioq_run_completion(&s->ioqueue, complete_request, s) > 0) {
+        /* TODO is this thread-safe and can it be done faster? */
+        virtio_irq(s->vq);
+    }
+
+    return true;
+}
+
+static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_num, unsigned int in_num, unsigned int head)
 {
     /* Virtio block requests look like this: */
     struct virtio_blk_outhdr *outhdr; /* iov[0] */
@@ -74,11 +108,54 @@ static void process_request(struct iovec iov[], unsigned int out_num, unsigned i
     outhdr = iov[0].iov_base;
     inhdr = iov[out_num + in_num - 1].iov_base;
 
+    /*
     fprintf(stderr, "virtio-blk request type=%#x sector=%#lx\n",
             outhdr->type, outhdr->sector);
+    */
+
+    if (unlikely(outhdr->type & ~(VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH))) {
+        fprintf(stderr, "virtio-blk unsupported request type %#x\n", outhdr->type);
+        exit(1);
+    }
+
+    struct iocb *iocb;
+    switch (outhdr->type & (VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH)) {
+    case VIRTIO_BLK_T_IN:
+        if (unlikely(out_num != 1)) {
+            fprintf(stderr, "virtio-blk invalid read request\n");
+            exit(1);
+        }
+        iocb = ioq_rdwr(ioq, true, &iov[1], in_num - 1, outhdr->sector * 512UL); /* TODO is it always 512? */
+        break;
+
+    case VIRTIO_BLK_T_OUT:
+        if (unlikely(in_num != 1)) {
+            fprintf(stderr, "virtio-blk invalid write request\n");
+            exit(1);
+        }
+        iocb = ioq_rdwr(ioq, false, &iov[1], out_num - 1, outhdr->sector * 512UL); /* TODO is it always 512? */
+        break;
+
+    case VIRTIO_BLK_T_FLUSH:
+        if (unlikely(in_num != 1 || out_num != 1)) {
+            fprintf(stderr, "virtio-blk invalid flush request\n");
+            exit(1);
+        }
+        iocb = ioq_fdsync(ioq);
+        break;
+
+    default:
+        fprintf(stderr, "virtio-blk multiple request type bits set\n");
+        exit(1);
+    }
+
+    /* Fill in virtio block metadata needed for completion */
+    VirtIOBlockRequest *req = container_of(iocb, VirtIOBlockRequest, iocb);
+    req->head = head;
+    req->status = &inhdr->status;
 }
 
-static void handle_notify(EventHandler *handler)
+static bool handle_notify(EventHandler *handler)
 {
     VirtIOBlock *s = container_of(handler, VirtIOBlock, notify_handler);
 
@@ -110,19 +187,29 @@ static void handle_notify(EventHandler *handler)
             break; /* no more requests */
         }
 
-        fprintf(stderr, "head=%u out_num=%u in_num=%u\n", head, out_num, in_num);
+        /*
+        fprintf(stderr, "out_num=%u in_num=%u head=%u\n", out_num, in_num, head);
+        */
 
-        process_request(iov, out_num, in_num);
+        process_request(&s->ioqueue, iov, out_num, in_num, head);
     }
+
+    /* Submit requests, if any */
+    if (likely(iov != iovec)) {
+        if (unlikely(ioq_submit(&s->ioqueue) < 0)) {
+            fprintf(stderr, "ioq_submit failed\n");
+            exit(1);
+        }
+    }
+
+    return true;
 }
 
 static void *data_plane_thread(void *opaque)
 {
     VirtIOBlock *s = opaque;
 
-    for (;;) {
-        event_poll(&s->event_poll);
-    }
+    event_poll_run(&s->event_poll);
     return NULL;
 }
 
@@ -136,10 +223,13 @@ static int get_raw_posix_fd_hack(VirtIOBlock *s)
 
 static void data_plane_start(VirtIOBlock *s)
 {
+    int i;
+
     vring_setup(&s->vring, &s->vdev, 0);
 
     event_poll_init(&s->event_poll);
 
+    /* Set up virtqueue notify */
     if (s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, true) != 0) {
         fprintf(stderr, "virtio-blk failed to set host notifier, ensure -enable-kvm is set\n");
         exit(1);
@@ -148,8 +238,11 @@ static void data_plane_start(VirtIOBlock *s)
                    virtio_queue_get_host_notifier(s->vq),
                    handle_notify);
 
+    /* Set up ioqueue */
     ioq_init(&s->ioqueue, get_raw_posix_fd_hack(s), REQ_MAX);
-    /* TODO populate ioqueue freelist */
+    for (i = 0; i < ARRAY_SIZE(s->requests); i++) {
+        ioq_put_iocb(&s->ioqueue, &s->requests[i].iocb);
+    }
     event_poll_add(&s->event_poll, &s->io_handler, ioq_get_notifier(&s->ioqueue), handle_io);
 
     qemu_thread_create(&s->data_plane_thread, data_plane_thread, s);
@@ -161,7 +254,9 @@ static void data_plane_stop(VirtIOBlock *s)
 {
     s->data_plane_started = false;
 
-    /* TODO stop data plane thread */
+    /* Tell data plane thread to stop and then wait for it to return */
+    event_poll_stop(&s->event_poll);
+    pthread_join(s->data_plane_thread.thread, NULL);
 
     ioq_cleanup(&s->ioqueue);
 
@@ -179,6 +274,10 @@ static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
         return;
     }
 
+    /*
+    fprintf(stderr, "virtio_blk_set_status %#x\n", val);
+    */
+
     if (val & VIRTIO_CONFIG_S_DRIVER_OK) {
         data_plane_start(s);
     } else {
@@ -186,11 +285,29 @@ static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
     }
 }
 
+static void virtio_blk_reset(VirtIODevice *vdev)
+{
+    virtio_blk_set_status(vdev, 0);
+}
+
 static void virtio_blk_handle_output(VirtIODevice *vdev, VirtQueue *vq)
 {
-    fprintf(stderr, "virtio_blk_handle_output: should never get here, "
-                    "data plane thread should process requests\n");
-    exit(1);
+    VirtIOBlock *s = to_virtio_blk(vdev);
+
+    if (s->data_plane_started) {
+        fprintf(stderr, "virtio_blk_handle_output: should never get here, "
+                        "data plane thread should process requests\n");
+        exit(1);
+    }
+
+    /* Linux seems to notify before the driver comes up.  This needs more
+     * investigation.  Just use a hack for now.
+     */
+    virtio_blk_set_status(vdev, VIRTIO_CONFIG_S_DRIVER_OK); /* start the thread */
+
+    /* Now kick the thread */
+    uint64_t dummy = 1;
+    ssize_t unused __attribute__((unused)) = write(event_notifier_get_fd(virtio_queue_get_host_notifier(s->vq)), &dummy, sizeof dummy);
 }
 
 /* coalesce internal state, copy to pci i/o region 0
@@ -250,6 +367,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf)
     s->vdev.get_config = virtio_blk_update_config;
     s->vdev.get_features = virtio_blk_get_features;
     s->vdev.set_status = virtio_blk_set_status;
+    s->vdev.reset = virtio_blk_reset;
     s->bs = conf->bs;
     s->conf = conf;
     s->sector_mask = (s->conf->logical_block_size / BDRV_SECTOR_SIZE) - 1;
