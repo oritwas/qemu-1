@@ -23,7 +23,9 @@
 enum {
     SEG_MAX = 126,                  /* maximum number of I/O segments */
     VRING_MAX = SEG_MAX + 2,        /* maximum number of vring descriptors */
-    REQ_MAX = VRING_MAX / 2,        /* maximum number of requests in the vring */
+    REQ_MAX = VRING_MAX,            /* maximum number of requests in the vring,
+                                     * is VRING_MAX / 2 with traditional and
+                                     * VRING_MAX with indirect descriptors */
 };
 
 typedef struct {
