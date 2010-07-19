@@ -1,6 +1,11 @@
 #ifndef VRING_H
 #define VRING_H
 
+/* Some virtio_ring.h files use BUG_ON() */
+#ifndef BUG_ON
+#define BUG_ON(x)
+#endif
+
 #include <linux/virtio_ring.h>
 #include "qemu-common.h"
 
