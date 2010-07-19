@@ -11,9 +11,9 @@
  *
  */
 
+#include <pthread.h>
 #include <libaio.h>
 #include "qemu-common.h"
-#include "qemu-thread.h"
 #include "virtio-blk.h"
 #include "hw/dataplane/event-poll.h"
 #include "hw/dataplane/vring.h"
@@ -43,7 +43,7 @@ typedef struct {
     char sn[BLOCK_SERIAL_STRLEN];
 
     bool data_plane_started;
-    QemuThread data_plane_thread;
+    pthread_t data_plane_thread;
 
     Vring vring;                    /* virtqueue vring */
 
@@ -264,7 +264,16 @@ static void data_plane_start(VirtIOBlock *s)
     }
     event_poll_add(&s->event_poll, &s->io_handler, ioq_get_notifier(&s->ioqueue), handle_io);
 
-    qemu_thread_create(&s->data_plane_thread, data_plane_thread, s);
+    /* Create data plane thread */
+    sigset_t set, oldset;
+    sigfillset(&set);
+    pthread_sigmask(SIG_SETMASK, &set, &oldset);
+    if (pthread_create(&s->data_plane_thread, NULL, data_plane_thread, s) != 0)
+    {
+        fprintf(stderr, "pthread create failed: %m\n");
+        exit(1);
+    }
+    pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 
     s->data_plane_started = true;
 }
@@ -275,7 +284,7 @@ static void data_plane_stop(VirtIOBlock *s)
 
     /* Tell data plane thread to stop and then wait for it to return */
     event_poll_stop(&s->event_poll);
-    pthread_join(s->data_plane_thread.thread, NULL);
+    pthread_join(s->data_plane_thread, NULL);
 
     ioq_cleanup(&s->ioqueue);
 
