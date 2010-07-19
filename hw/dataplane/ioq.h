@@ -3,7 +3,7 @@
 
 typedef struct {
     int fd;                         /* file descriptor */
-    unsigned int max_reqs;           /* max length of freelist and queue */
+    unsigned int max_reqs;          /* max length of freelist and queue */
 
     io_context_t io_ctx;            /* Linux AIO context */
     EventNotifier io_notifier;      /* Linux AIO eventfd */
@@ -91,18 +91,16 @@ static struct iocb *ioq_rdwr(IOQueue *ioq, bool read, struct iovec *iov, unsigne
     return iocb;
 }
 
-static struct iocb *ioq_fdsync(IOQueue *ioq)
-{
-    struct iocb *iocb = ioq_get_iocb(ioq);
-
-    io_prep_fdsync(iocb, ioq->fd);
-    io_set_eventfd(iocb, event_notifier_get_fd(&ioq->io_notifier));
-    return iocb;
-}
-
 static int ioq_submit(IOQueue *ioq)
 {
     int rc = io_submit(ioq->io_ctx, ioq->queue_idx, ioq->queue);
+    if (unlikely(rc < 0)) {
+        unsigned int i;
+        fprintf(stderr, "io_submit io_ctx=%#lx nr=%d iovecs=%p\n", (uint64_t)ioq->io_ctx, ioq->queue_idx, ioq->queue);
+        for (i = 0; i < ioq->queue_idx; i++) {
+            fprintf(stderr, "[%u] type=%#x fd=%d\n", i, ioq->queue[i]->aio_lio_opcode, ioq->queue[i]->aio_fildes);
+        }
+    }
     ioq->queue_idx = 0; /* reset */
     return rc;
 }

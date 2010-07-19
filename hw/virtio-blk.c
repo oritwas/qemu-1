@@ -58,6 +58,14 @@ static VirtIOBlock *to_virtio_blk(VirtIODevice *vdev)
     return (VirtIOBlock *)vdev;
 }
 
+/* Normally the block driver passes down the fd, there's no way to get it from
+ * above.
+ */
+static int get_raw_posix_fd_hack(VirtIOBlock *s)
+{
+    return *(int*)s->bs->file->opaque;
+}
+
 static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
 {
     VirtIOBlock *s = opaque;
@@ -77,18 +85,6 @@ static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
      * transferred plus the status bytes.
      */
     vring_push(&s->vring, req->head, len + sizeof req->status);
-}
-
-static bool handle_io(EventHandler *handler)
-{
-    VirtIOBlock *s = container_of(handler, VirtIOBlock, io_handler);
-
-    if (ioq_run_completion(&s->ioqueue, complete_request, s) > 0) {
-        /* TODO is this thread-safe and can it be done faster? */
-        virtio_irq(s->vq);
-    }
-
-    return true;
 }
 
 static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_num, unsigned int in_num, unsigned int head)
@@ -113,13 +109,16 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
             outhdr->type, outhdr->sector);
     */
 
-    if (unlikely(outhdr->type & ~(VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH))) {
+    /* TODO Linux sets the barrier bit even when not advertised! */
+    uint32_t type = outhdr->type & ~VIRTIO_BLK_T_BARRIER;
+
+    if (unlikely(type & ~(VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH))) {
         fprintf(stderr, "virtio-blk unsupported request type %#x\n", outhdr->type);
         exit(1);
     }
 
     struct iocb *iocb;
-    switch (outhdr->type & (VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH)) {
+    switch (type & (VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH)) {
     case VIRTIO_BLK_T_IN:
         if (unlikely(out_num != 1)) {
             fprintf(stderr, "virtio-blk invalid read request\n");
@@ -141,8 +140,16 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
             fprintf(stderr, "virtio-blk invalid flush request\n");
             exit(1);
         }
-        iocb = ioq_fdsync(ioq);
-        break;
+
+        /* TODO fdsync is not supported by all backends, do it synchronously here! */
+        {
+            VirtIOBlock *s = container_of(ioq, VirtIOBlock, ioqueue);
+            fdatasync(get_raw_posix_fd_hack(s));
+            inhdr->status = VIRTIO_BLK_S_OK;
+            vring_push(&s->vring, head, sizeof *inhdr);
+            virtio_irq(s->vq);
+        }
+        return;
 
     default:
         fprintf(stderr, "virtio-blk multiple request type bits set\n");
@@ -195,11 +202,29 @@ static bool handle_notify(EventHandler *handler)
     }
 
     /* Submit requests, if any */
-    if (likely(iov != iovec)) {
-        if (unlikely(ioq_submit(&s->ioqueue) < 0)) {
-            fprintf(stderr, "ioq_submit failed\n");
-            exit(1);
-        }
+    int rc = ioq_submit(&s->ioqueue);
+    if (unlikely(rc < 0)) {
+        fprintf(stderr, "ioq_submit failed %d\n", rc);
+        exit(1);
+    }
+    return true;
+}
+
+static bool handle_io(EventHandler *handler)
+{
+    VirtIOBlock *s = container_of(handler, VirtIOBlock, io_handler);
+
+    if (ioq_run_completion(&s->ioqueue, complete_request, s) > 0) {
+        /* TODO is this thread-safe and can it be done faster? */
+        virtio_irq(s->vq);
+    }
+
+    /* If there were more requests than iovecs, the vring will not be empty yet
+     * so check again.  There should now be enough resources to process more
+     * requests.
+     */
+    if (vring_more_avail(&s->vring)) {
+        return handle_notify(&s->notify_handler);
     }
 
     return true;
@@ -211,14 +236,6 @@ static void *data_plane_thread(void *opaque)
 
     event_poll_run(&s->event_poll);
     return NULL;
-}
-
-/* Normally the block driver passes down the fd, there's no way to get it from
- * above.
- */
-static int get_raw_posix_fd_hack(VirtIOBlock *s)
-{
-    return *(int*)s->bs->file->opaque;
 }
 
 static void data_plane_start(VirtIOBlock *s)

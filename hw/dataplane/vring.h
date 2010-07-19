@@ -64,6 +64,86 @@ static void vring_setup(Vring *vring, VirtIODevice *vdev, int n)
             vring->vr.desc, vring->vr.avail, vring->vr.used);
 }
 
+static bool vring_more_avail(Vring *vring)
+{
+	return vring->vr.avail->idx != vring->last_avail_idx;
+}
+
+/* This is stolen from linux-2.6/drivers/vhost/vhost.c. */
+static bool get_indirect(Vring *vring,
+			struct iovec iov[], struct iovec *iov_end,
+			unsigned int *out_num, unsigned int *in_num,
+			struct vring_desc *indirect)
+{
+	struct vring_desc desc;
+	unsigned int i = 0, count, found = 0;
+
+	/* Sanity check */
+	if (unlikely(indirect->len % sizeof desc)) {
+		fprintf(stderr, "Invalid length in indirect descriptor: "
+		       "len 0x%llx not multiple of 0x%zx\n",
+		       (unsigned long long)indirect->len,
+		       sizeof desc);
+		exit(1);
+	}
+
+	count = indirect->len / sizeof desc;
+	/* Buffers are chained via a 16 bit next field, so
+	 * we can have at most 2^16 of these. */
+	if (unlikely(count > USHRT_MAX + 1)) {
+		fprintf(stderr, "Indirect buffer length too big: %d\n",
+		       indirect->len);
+        exit(1);
+	}
+
+    /* Point to translate indirect desc chain */
+    indirect = phys_to_host(vring, indirect->addr);
+
+	/* We will use the result as an address to read from, so most
+	 * architectures only need a compiler barrier here. */
+	__sync_synchronize(); /* read_barrier_depends(); */
+
+	do {
+		if (unlikely(++found > count)) {
+			fprintf(stderr, "Loop detected: last one at %u "
+			       "indirect size %u\n",
+			       i, count);
+			exit(1);
+		}
+
+        desc = *indirect++;
+		if (unlikely(desc.flags & VRING_DESC_F_INDIRECT)) {
+			fprintf(stderr, "Nested indirect descriptor\n");
+            exit(1);
+		}
+
+        /* Stop for now if there are not enough iovecs available. */
+        if (iov >= iov_end) {
+            return false;
+        }
+
+        iov->iov_base = phys_to_host(vring, desc.addr);
+        iov->iov_len  = desc.len;
+        iov++;
+
+		/* If this is an input descriptor, increment that count. */
+		if (desc.flags & VRING_DESC_F_WRITE) {
+			*in_num += 1;
+		} else {
+			/* If it's an output descriptor, they're all supposed
+			 * to come before any input descriptors. */
+			if (unlikely(*in_num)) {
+				fprintf(stderr, "Indirect descriptor "
+				       "has out after in: idx %d\n", i);
+                exit(1);
+			}
+			*out_num += 1;
+		}
+        i = desc.next;
+	} while (desc.flags & VRING_DESC_F_NEXT);
+    return true;
+}
+
 /* This looks in the virtqueue and for the first available buffer, and converts
  * it to an iovec for convenient access.  Since descriptors consist of some
  * number of output then some number of input descriptors, it's actually two
@@ -129,23 +209,20 @@ static unsigned int vring_pop(Vring *vring,
 		}
         desc = vring->vr.desc[i];
 		if (desc.flags & VRING_DESC_F_INDIRECT) {
-/*			ret = get_indirect(dev, vq, iov, iov_size,
-					   out_num, in_num,
-					   log, log_num, &desc);
-			if (unlikely(ret < 0)) {
-				vq_err(vq, "Failure detected "
-				       "in indirect descriptor at idx %d\n", i);
-				return ret;
-			}
-			continue; */
-            fprintf(stderr, "Indirect vring not supported\n");
-            exit(1);
+			if (!get_indirect(vring, iov, iov_end, out_num, in_num, &desc)) {
+                return num; /* not enough iovecs, stop for now */
+            }
+            continue;
 		}
 
+        /* If there are not enough iovecs left, stop for now.  The caller
+         * should check if there are more descs available once they have dealt
+         * with the current set.
+         */
         if (iov >= iov_end) {
-            fprintf(stderr, "Not enough vring iovecs\n");
-            exit(1);
+            return num;
         }
+
         iov->iov_base = phys_to_host(vring, desc.addr);
         iov->iov_len  = desc.len;
         iov++;
