@@ -601,6 +601,15 @@ void virtio_irq(VirtQueue *vq)
     virtio_notify_vector(vq->vdev, vq->vector);
 }
 
+bool virtio_queue_try_notify_from_thread(VirtQueue *vq)
+{
+    VirtIODevice *vdev = vq->vdev;
+    if (likely(vdev->binding->try_notify_from_thread)) {
+        return vdev->binding->try_notify_from_thread(vdev->binding_opaque, vq->vector);
+    }
+    return false;
+}
+
 void virtio_notify(VirtIODevice *vdev, VirtQueue *vq)
 {
     /* Always notify when queue is empty (when feature acknowledge) */

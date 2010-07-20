@@ -369,6 +369,23 @@ void msix_notify(PCIDevice *dev, unsigned vector)
     stl_phys(address, data);
 }
 
+bool msix_try_notify_from_thread(PCIDevice *dev, unsigned vector)
+{
+    if (unlikely(vector >= dev->msix_entries_nr || !dev->msix_entry_used[vector])) {
+        return false;
+    }
+    if (unlikely(msix_is_masked(dev, vector))) {
+        return false;
+    }
+#ifdef KVM_CAP_IRQCHIP
+    if (likely(kvm_enabled() && kvm_irqchip_in_kernel())) {
+        kvm_set_irq(dev->msix_irq_entries[vector].gsi, 1, NULL);
+        return true;
+    }
+#endif
+    return false;
+}
+
 void msix_reset(PCIDevice *dev)
 {
     if (!(dev->cap_present & QEMU_PCI_CAP_MSIX))

@@ -119,6 +119,13 @@ static void virtio_pci_notify(void *opaque, uint16_t vector)
         qemu_set_irq(proxy->pci_dev.irq[0], proxy->vdev->isr & 1);
 }
 
+static bool virtio_pci_try_notify_from_thread(void *opaque, uint16_t vector)
+{
+    VirtIOPCIProxy *proxy = opaque;
+    return msix_enabled(&proxy->pci_dev) &&
+           msix_try_notify_from_thread(&proxy->pci_dev, vector);
+}
+
 static void virtio_pci_save_config(void * opaque, QEMUFile *f)
 {
     VirtIOPCIProxy *proxy = opaque;
@@ -480,6 +487,7 @@ static int virtio_pci_set_host_notifier(void *opaque, int n, bool assign)
 
 static const VirtIOBindings virtio_pci_bindings = {
     .notify = virtio_pci_notify,
+    .try_notify_from_thread = virtio_pci_try_notify_from_thread,
     .save_config = virtio_pci_save_config,
     .load_config = virtio_pci_load_config,
     .save_queue = virtio_pci_save_queue,

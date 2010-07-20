@@ -87,6 +87,7 @@ typedef struct VirtQueueElement
 
 typedef struct {
     void (*notify)(void * opaque, uint16_t vector);
+    bool (*try_notify_from_thread)(void * opaque, uint16_t vector);
     void (*save_config)(void * opaque, QEMUFile *f);
     void (*save_queue)(void * opaque, int n, QEMUFile *f);
     int (*load_config)(void * opaque, QEMUFile *f);
@@ -154,6 +155,8 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f);
 void virtio_cleanup(VirtIODevice *vdev);
 
 void virtio_notify_config(VirtIODevice *vdev);
+
+bool virtio_queue_try_notify_from_thread(VirtQueue *vq);
 
 void virtio_queue_set_notification(VirtQueue *vq, int enable);
 

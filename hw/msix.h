@@ -28,6 +28,7 @@ void msix_vector_unuse(PCIDevice *dev, unsigned vector);
 void msix_unuse_all_vectors(PCIDevice *dev);
 
 void msix_notify(PCIDevice *dev, unsigned vector);
+bool msix_try_notify_from_thread(PCIDevice *dev, unsigned vector);
 
 void msix_reset(PCIDevice *dev);
 

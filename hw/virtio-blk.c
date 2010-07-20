@@ -77,6 +77,12 @@ static void virtio_blk_notify_guest(VirtIOBlock *s)
         !(s->vdev.guest_features & (1 << VIRTIO_F_NOTIFY_ON_EMPTY))))
 		return;
 
+    /* Try to issue the ioctl() directly for speed */
+    if (likely(virtio_queue_try_notify_from_thread(s->vq))) {
+        return;
+    }
+
+    /* If the fast path didn't work, use irqfd */
     event_notifier_set(virtio_queue_get_guest_notifier(s->vq));
 }
 
