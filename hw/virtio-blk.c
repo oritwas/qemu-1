@@ -68,6 +68,18 @@ static int get_raw_posix_fd_hack(VirtIOBlock *s)
     return *(int*)s->bs->file->opaque;
 }
 
+/* Raise an interrupt to signal guest, if necessary */
+static void virtio_blk_notify_guest(VirtIOBlock *s)
+{
+    /* Always notify when queue is empty (when feature acknowledge) */
+	if ((s->vring.vr.avail->flags & VRING_AVAIL_F_NO_INTERRUPT) &&
+	    (s->vring.vr.avail->idx != s->vring.last_avail_idx ||
+        !(s->vdev.guest_features & (1 << VIRTIO_F_NOTIFY_ON_EMPTY))))
+		return;
+
+    event_notifier_set(virtio_queue_get_guest_notifier(s->vq));
+}
+
 static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
 {
     VirtIOBlock *s = opaque;
@@ -149,7 +161,7 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
             fdatasync(get_raw_posix_fd_hack(s));
             inhdr->status = VIRTIO_BLK_S_OK;
             vring_push(&s->vring, head, sizeof *inhdr);
-            virtio_irq(s->vq);
+            virtio_blk_notify_guest(s);
         }
         return;
 
@@ -217,8 +229,7 @@ static bool handle_io(EventHandler *handler)
     VirtIOBlock *s = container_of(handler, VirtIOBlock, io_handler);
 
     if (ioq_run_completion(&s->ioqueue, complete_request, s) > 0) {
-        /* TODO is this thread-safe and can it be done faster? */
-        virtio_irq(s->vq);
+        virtio_blk_notify_guest(s);
     }
 
     /* If there were more requests than iovecs, the vring will not be empty yet
@@ -246,11 +257,17 @@ static void data_plane_start(VirtIOBlock *s)
 
     vring_setup(&s->vring, &s->vdev, 0);
 
+    /* Set up guest notifier (irq) */
+    if (s->vdev.binding->set_guest_notifier(s->vdev.binding_opaque, 0, true) != 0) {
+        fprintf(stderr, "virtio-blk failed to set guest notifier, ensure -enable-kvm is set\n");
+        exit(1);
+    }
+
     event_poll_init(&s->event_poll);
 
     /* Set up virtqueue notify */
     if (s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, true) != 0) {
-        fprintf(stderr, "virtio-blk failed to set host notifier, ensure -enable-kvm is set\n");
+        fprintf(stderr, "virtio-blk failed to set host notifier\n");
         exit(1);
     }
     event_poll_add(&s->event_poll, &s->notify_handler,
@@ -291,6 +308,9 @@ static void data_plane_stop(VirtIOBlock *s)
     s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, false);
 
     event_poll_cleanup(&s->event_poll);
+
+    /* Clean up guest notifier (irq) */
+    s->vdev.binding->set_guest_notifier(s->vdev.binding_opaque, 0, false);
 }
 
 static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t val)
