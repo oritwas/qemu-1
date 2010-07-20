@@ -334,8 +334,7 @@ static void virtio_blk_handle_output(VirtIODevice *vdev, VirtQueue *vq)
     virtio_blk_set_status(vdev, VIRTIO_CONFIG_S_DRIVER_OK); /* start the thread */
 
     /* Now kick the thread */
-    uint64_t dummy = 1;
-    ssize_t unused __attribute__((unused)) = write(event_notifier_get_fd(virtio_queue_get_host_notifier(s->vq)), &dummy, sizeof dummy);
+    event_notifier_set(virtio_queue_get_host_notifier(s->vq));
 }
 
 /* coalesce internal state, copy to pci i/o region 0
