@@ -69,9 +69,27 @@ static void vring_setup(Vring *vring, VirtIODevice *vdev, int n)
             vring->vr.desc, vring->vr.avail, vring->vr.used);
 }
 
+/* Are there more descriptors available? */
 static bool vring_more_avail(Vring *vring)
 {
 	return vring->vr.avail->idx != vring->last_avail_idx;
+}
+
+/* Hint to disable guest->host notifies */
+static void vring_disable_cb(Vring *vring)
+{
+    vring->vr.used->flags |= VRING_USED_F_NO_NOTIFY;
+}
+
+/* Re-enable guest->host notifies
+ *
+ * Returns false if there are more descriptors in the ring.
+ */
+static bool vring_enable_cb(Vring *vring)
+{
+    vring->vr.used->flags &= ~VRING_USED_F_NO_NOTIFY;
+    __sync_synchronize(); /* mb() */
+    return !vring_more_avail(vring);
 }
 
 /* This is stolen from linux-2.6/drivers/vhost/vhost.c. */
@@ -160,7 +178,7 @@ static bool get_indirect(Vring *vring,
  *
  * Stolen from linux-2.6/drivers/vhost/vhost.c.
  */
-static unsigned int vring_pop(Vring *vring,
+static int vring_pop(Vring *vring,
 		      struct iovec iov[], struct iovec *iov_end,
 		      unsigned int *out_num, unsigned int *in_num)
 {
@@ -178,9 +196,9 @@ static unsigned int vring_pop(Vring *vring,
 		exit(1);
 	}
 
-	/* If there's nothing new since last we looked, return invalid. */
+	/* If there's nothing new since last we looked. */
 	if (avail_idx == last_avail_idx)
-		return num;
+		return -EAGAIN;
 
 	/* Only get avail ring entries after they have been exposed by guest. */
 	__sync_synchronize(); /* smp_rmb() */
@@ -215,7 +233,7 @@ static unsigned int vring_pop(Vring *vring,
         desc = vring->vr.desc[i];
 		if (desc.flags & VRING_DESC_F_INDIRECT) {
 			if (!get_indirect(vring, iov, iov_end, out_num, in_num, &desc)) {
-                return num; /* not enough iovecs, stop for now */
+                return -ENOBUFS; /* not enough iovecs, stop for now */
             }
             continue;
 		}
@@ -225,7 +243,7 @@ static unsigned int vring_pop(Vring *vring,
          * with the current set.
          */
         if (iov >= iov_end) {
-            return num;
+            return -ENOBUFS;
         }
 
         iov->iov_base = phys_to_host(vring, desc.addr);

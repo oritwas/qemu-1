@@ -197,7 +197,8 @@ static bool handle_notify(EventHandler *handler)
      * accept more I/O.  This is not implemented yet.
      */
     struct iovec iovec[VRING_MAX];
-    struct iovec *iov, *end = &iovec[VRING_MAX];
+    struct iovec *end = &iovec[VRING_MAX];
+    struct iovec *iov = iovec;
 
     /* When a request is read from the vring, the index of the first descriptor
      * (aka head) is returned so that the completed request can be pushed onto
@@ -206,19 +207,41 @@ static bool handle_notify(EventHandler *handler)
      * The number of hypervisor read-only iovecs is out_num.  The number of
      * hypervisor write-only iovecs is in_num.
      */
-    unsigned int head, out_num = 0, in_num = 0;
+    int head;
+    unsigned int out_num = 0, in_num = 0;
 
-    for (iov = iovec; ; iov += out_num + in_num) {
-        head = vring_pop(&s->vring, iov, end, &out_num, &in_num);
-        if (head >= vring_get_num(&s->vring)) {
-            break; /* no more requests */
+    for (;;) {
+        /* Disable guest->host notifies to avoid unnecessary vmexits */
+        vring_disable_cb(&s->vring);
+
+        for (;;) {
+            head = vring_pop(&s->vring, iov, end, &out_num, &in_num);
+            if (head < 0) {
+                break; /* no more requests */
+            }
+
+            /*
+            fprintf(stderr, "out_num=%u in_num=%u head=%d\n", out_num, in_num, head);
+            */
+
+            process_request(&s->ioqueue, iov, out_num, in_num, head);
+            iov += out_num + in_num;
         }
 
-        /*
-        fprintf(stderr, "out_num=%u in_num=%u head=%u\n", out_num, in_num, head);
-        */
-
-        process_request(&s->ioqueue, iov, out_num, in_num, head);
+        if (likely(head == -EAGAIN)) { /* vring emptied */
+            /* Re-enable guest->host notifies and stop processing the vring.
+             * But if the guest has snuck in more descriptors, keep processing.
+             */
+            if (likely(vring_enable_cb(&s->vring))) {
+                break;
+            }
+        } else { /* head == -ENOBUFS, cannot continue since iovecs[] is depleted */
+            /* Since there are no iovecs[] left, stop processing for now.  Do
+             * not re-enable guest->host notifies since the I/O completion
+             * handler knows to check for more vring descriptors anyway.
+             */
+            break;
+        }
     }
 
     /* Submit requests, if any */
@@ -242,7 +265,7 @@ static bool handle_io(EventHandler *handler)
      * so check again.  There should now be enough resources to process more
      * requests.
      */
-    if (vring_more_avail(&s->vring)) {
+    if (unlikely(vring_more_avail(&s->vring))) {
         return handle_notify(&s->notify_handler);
     }
 
