@@ -98,6 +98,7 @@ struct virtio_scsi_inhdr
 #ifdef __linux__
 #define DEFINE_VIRTIO_BLK_FEATURES(_state, _field) \
         DEFINE_VIRTIO_COMMON_FEATURES(_state, _field), \
+        DEFINE_PROP_BIT("guest_disables_cb", _state, _field, VIRTIO_RING_F_GUEST_DISABLES_CB, true), \
         DEFINE_PROP_BIT("scsi", _state, _field, VIRTIO_BLK_F_SCSI, true)
 #else
 #define DEFINE_VIRTIO_BLK_FEATURES(_state, _field) \

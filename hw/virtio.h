@@ -46,6 +46,8 @@
 #define VIRTIO_F_NOTIFY_ON_EMPTY        24
 /* We support indirect buffer descriptors */
 #define VIRTIO_RING_F_INDIRECT_DESC     28
+/* The guest should disable its callback before notifying */
+#define VIRTIO_RING_F_GUEST_DISABLES_CB 29
 /* A guest should never accept this.  It implies negotiation is broken. */
 #define VIRTIO_F_BAD_FEATURE		30
 
