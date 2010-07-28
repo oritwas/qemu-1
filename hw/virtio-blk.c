@@ -18,6 +18,7 @@
 #include "hw/dataplane/event-poll.h"
 #include "hw/dataplane/vring.h"
 #include "hw/dataplane/ioq.h"
+#include "hw/dataplane/iosched.h"
 #include "kvm.h"
 
 enum {
@@ -52,6 +53,7 @@ typedef struct {
     EventHandler notify_handler;    /* virtqueue notify handler */
 
     IOQueue ioqueue;                /* Linux AIO queue (should really be per dataplane thread) */
+    IOSched iosched;                /* I/O scheduler */
     VirtIOBlockRequest requests[REQ_MAX]; /* pool of requests, managed by the queue */
 } VirtIOBlock;
 
@@ -244,6 +246,8 @@ static bool handle_notify(EventHandler *handler)
         }
     }
 
+    iosched(&s->iosched, s->ioqueue.queue, s->ioqueue.queue_idx);
+
     /* Submit requests, if any */
     int rc = ioq_submit(&s->ioqueue);
     if (unlikely(rc < 0)) {
@@ -284,6 +288,7 @@ static void data_plane_start(VirtIOBlock *s)
 {
     int i;
 
+    iosched_init(&s->iosched);
     vring_setup(&s->vring, &s->vdev, 0);
 
     /* Set up guest notifier (irq) */
