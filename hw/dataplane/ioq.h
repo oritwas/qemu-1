@@ -96,7 +96,7 @@ static int ioq_submit(IOQueue *ioq)
     int rc = io_submit(ioq->io_ctx, ioq->queue_idx, ioq->queue);
     if (unlikely(rc < 0)) {
         unsigned int i;
-        fprintf(stderr, "io_submit io_ctx=%#lx nr=%d iovecs=%p\n", (uint64_t)ioq->io_ctx, ioq->queue_idx, ioq->queue);
+        fprintf(stderr, "io_submit failed io_ctx=%#lx nr=%d iovecs=%p rc=%d\n", (uint64_t)ioq->io_ctx, ioq->queue_idx, ioq->queue, rc);
         for (i = 0; i < ioq->queue_idx; i++) {
             fprintf(stderr, "[%u] type=%#x fd=%d\n", i, ioq->queue[i]->aio_lio_opcode, ioq->queue[i]->aio_fildes);
         }
@@ -121,7 +121,6 @@ static int ioq_run_completion(IOQueue *ioq, IOQueueCompletion *completion, void 
         ssize_t ret = ((uint64_t)events[i].res2 << 32) | events[i].res;
 
         completion(events[i].obj, ret, opaque);
-        ioq_put_iocb(ioq, events[i].obj);
     }
     return nevents;
 }

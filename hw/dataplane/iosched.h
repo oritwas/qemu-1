@@ -9,6 +9,8 @@ typedef struct {
     unsigned long sched_calls;
 } IOSched;
 
+typedef void MergeFunc(struct iocb *a, struct iocb *b);
+
 static int iocb_cmp(const void *a, const void *b)
 {
     const struct iocb *iocb_a = a;
@@ -29,10 +31,10 @@ static int iocb_cmp(const void *a, const void *b)
 
 static size_t iocb_nbytes(struct iocb *iocb)
 {
-    struct iovec *iov = iocb->u.c.buf;
+    const struct iovec *iov = iocb->u.v.vec;
     size_t nbytes = 0;
     size_t i;
-    for (i = 0; i < iocb->u.c.nbytes; i++) {
+    for (i = 0; i < iocb->u.v.nr; i++) {
         nbytes += iov->iov_len;
         iov++;
     }
@@ -44,35 +46,52 @@ static void iosched_init(IOSched *iosched)
     memset(iosched, 0, sizeof *iosched);
 }
 
-static void iosched_print_stats(IOSched *iosched)
+static __attribute__((unused)) void iosched_print_stats(IOSched *iosched)
 {
     fprintf(stderr, "iocbs = %lu merges = %lu sched_calls = %lu\n",
             iosched->iocbs, iosched->merges, iosched->sched_calls);
     memset(iosched, 0, sizeof *iosched);
 }
 
-static void iosched(IOSched *iosched, struct iocb *unsorted[], unsigned int count)
+static void iosched(IOSched *iosched, struct iocb *unsorted[], unsigned int *count, MergeFunc merge_func)
 {
-    struct iocb *sorted[count];
-    struct iocb *last;
-    unsigned int i;
+    struct iocb *sorted[*count];
+    unsigned int merges = 0;
+    unsigned int i, j;
 
+    /*
     if ((++iosched->sched_calls % 1000) == 0) {
         iosched_print_stats(iosched);
     }
+    */
+
+    if (!*count) {
+        return;
+    }
 
     memcpy(sorted, unsorted, sizeof sorted);
-    qsort(sorted, count, sizeof sorted[0], iocb_cmp);
+    qsort(sorted, *count, sizeof sorted[0], iocb_cmp);
 
-    iosched->iocbs += count;
-    last = sorted[0];
-    for (i = 1; i < count; i++) {
-        if (last->aio_lio_opcode == sorted[i]->aio_lio_opcode &&
-            last->u.c.offset + iocb_nbytes(last) == sorted[i]->u.c.offset) {
-            iosched->merges++;
+    unsorted[0] = sorted[0];
+    j = 1;
+    for (i = 1; i < *count; i++) {
+        struct iocb *last = sorted[i - 1];
+        struct iocb *cur = sorted[i];
+
+        if (last->aio_lio_opcode == cur->aio_lio_opcode &&
+            last->u.c.offset + iocb_nbytes(last) == cur->u.c.offset) {
+            merge_func(last, cur);
+            merges++;
+
+            unsorted[j - 1] = cur;
+        } else {
+            unsorted[j++] = cur;
         }
-        last = sorted[i];
     }
+
+    iosched->merges += merges;
+    iosched->iocbs += *count;
+    *count = j;
 }
 
 #endif /* IOSCHED_H */

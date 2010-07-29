@@ -29,7 +29,7 @@ static inline void *phys_to_host(Vring *vring, target_phys_addr_t phys)
     if (phys >= 0x100000000) {
         phys -= 0x100000000 - 0xe0000000;
     } else if (phys >= 0xe0000000) {
-        fprintf(stderr, "phys_to_host bad physical address in PCI range %#lx\n", phys);
+        fprintf(stderr, "phys_to_host bad physical address in PCI range %#lx\n", (unsigned long)phys);
         exit(1);
     }
     return vring->phys_mem_zero_host_ptr + phys;
@@ -65,7 +65,7 @@ static void vring_setup(Vring *vring, VirtIODevice *vdev, int n)
     vring->last_used_idx = 0;
 
     fprintf(stderr, "vring physical=%#lx desc=%p avail=%p used=%p\n",
-            virtio_queue_get_ring_addr(vdev, n),
+            (unsigned long)virtio_queue_get_ring_addr(vdev, n),
             vring->vr.desc, vring->vr.avail, vring->vr.used);
 }
 

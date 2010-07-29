@@ -29,11 +29,29 @@ enum {
                                      * VRING_MAX with indirect descriptors */
 };
 
-typedef struct {
+/** I/O request
+ *
+ * Most I/O requests need to know the vring index (head) and the completion
+ * status byte that must be filled in to tell the guest whether or not the
+ * request succeeded.
+ *
+ * The iovec array pointed to by the iocb is valid only before ioq_submit() is
+ * called.  After that, neither the kernel nor userspace needs to access the
+ * iovec anymore and the memory is no longer owned by this VirtIOBlockRequest.
+ *
+ * Requests can be merged together by the I/O scheduler.  When this happens,
+ * the next_merged field is used to link the requests and only the first
+ * request's iocb is used.  Merged requests require memory allocation for the
+ * iovec array and must be freed appropriately.
+ */
+typedef struct VirtIOBlockRequest VirtIOBlockRequest;
+struct VirtIOBlockRequest {
     struct iocb iocb;               /* Linux AIO control block */
     unsigned char *status;          /* virtio block status code */
     unsigned int head;              /* vring descriptor index */
-} VirtIOBlockRequest;
+    int len;                        /* number of I/O bytes, only used for merged reqs */
+    VirtIOBlockRequest *next_merged;/* next merged iocb or NULL */
+};
 
 typedef struct {
     VirtIODevice vdev;
@@ -88,15 +106,17 @@ static void virtio_blk_notify_guest(VirtIOBlock *s)
     event_notifier_set(virtio_queue_get_guest_notifier(s->vq));
 }
 
-static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
+static void complete_one_request(VirtIOBlockRequest *req, VirtIOBlock *s, ssize_t ret)
 {
-    VirtIOBlock *s = opaque;
-    VirtIOBlockRequest *req = container_of(iocb, VirtIOBlockRequest, iocb);
     int len;
 
     if (likely(ret >= 0)) {
         *req->status = VIRTIO_BLK_S_OK;
-        len = ret;
+
+        /* Merged requests know their part of the length, single requests can
+         * just use the return value.
+         */
+        len = unlikely(req->len) ? req->len : ret;
     } else {
         *req->status = VIRTIO_BLK_S_IOERR;
         len = 0;
@@ -107,6 +127,59 @@ static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
      * transferred plus the status bytes.
      */
     vring_push(&s->vring, req->head, len + sizeof req->status);
+}
+
+static bool is_request_merged(VirtIOBlockRequest *req)
+{
+    return req->next_merged;
+}
+
+static void complete_request(struct iocb *iocb, ssize_t ret, void *opaque)
+{
+    VirtIOBlock *s = opaque;
+    VirtIOBlockRequest *req = container_of(iocb, VirtIOBlockRequest, iocb);
+
+    /* Free the iovec now, it isn't needed */
+    if (unlikely(is_request_merged(req))) {
+        qemu_free((void*)iocb->u.v.vec);
+    }
+
+    while (req) {
+        complete_one_request(req, s, ret);
+
+        VirtIOBlockRequest *next = req->next_merged;
+        ioq_put_iocb(&s->ioqueue, &req->iocb);
+        req = next;
+    }
+}
+
+static void merge_request(struct iocb *iocb_a, struct iocb *iocb_b)
+{
+    /* Repeated merging could be made more efficient using realloc, but this
+     * approach keeps it simple. */
+
+    VirtIOBlockRequest *req_a = container_of(iocb_a, VirtIOBlockRequest, iocb);
+    VirtIOBlockRequest *req_b = container_of(iocb_b, VirtIOBlockRequest, iocb);
+    struct iovec *iovec = qemu_malloc((iocb_a->u.v.nr + iocb_b->u.v.nr) * sizeof iovec[0]);
+
+    memcpy(iovec, iocb_a->u.v.vec, iocb_a->u.v.nr * sizeof iovec[0]);
+    memcpy(iovec + iocb_a->u.v.nr, iocb_b->u.v.vec, iocb_b->u.v.nr * sizeof iovec[0]);
+
+    if (is_request_merged(req_a)) {
+        /* Free the old merged iovec */
+        qemu_free((void*)iocb_a->u.v.vec);
+    } else {
+        /* Stash the request length */
+        req_a->len = iocb_nbytes(iocb_a);
+    }
+
+    iocb_b->u.v.vec = iovec;
+    req_b->len = iocb_nbytes(iocb_b);
+    req_b->next_merged = req_a;
+    /*
+    fprintf(stderr, "merged %p (%u) and %p (%u), %u iovecs in total\n",
+            req_a, iocb_a->u.v.nr, req_b, iocb_b->u.v.nr, iocb_a->u.v.nr + iocb_b->u.v.nr);
+    */
 }
 
 static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_num, unsigned int in_num, unsigned int head)
@@ -182,6 +255,8 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
     VirtIOBlockRequest *req = container_of(iocb, VirtIOBlockRequest, iocb);
     req->head = head;
     req->status = &inhdr->status;
+    req->len = 0;
+    req->next_merged = NULL;
 }
 
 static bool handle_notify(EventHandler *handler)
@@ -246,7 +321,7 @@ static bool handle_notify(EventHandler *handler)
         }
     }
 
-    iosched(&s->iosched, s->ioqueue.queue, s->ioqueue.queue_idx);
+    iosched(&s->iosched, s->ioqueue.queue, &s->ioqueue.queue_idx, merge_request);
 
     /* Submit requests, if any */
     int rc = ioq_submit(&s->ioqueue);
@@ -293,7 +368,7 @@ static void data_plane_start(VirtIOBlock *s)
 
     /* Set up guest notifier (irq) */
     if (s->vdev.binding->set_guest_notifier(s->vdev.binding_opaque, 0, true) != 0) {
-        fprintf(stderr, "virtio-blk failed to set guest notifier, ensure -enable-kvm is set\n");
+        fprintf(stderr, "virtio-blk failed to set guest notifier\n");
         exit(1);
     }
 
@@ -301,7 +376,7 @@ static void data_plane_start(VirtIOBlock *s)
 
     /* Set up virtqueue notify */
     if (s->vdev.binding->set_host_notifier(s->vdev.binding_opaque, 0, true) != 0) {
-        fprintf(stderr, "virtio-blk failed to set host notifier\n");
+        fprintf(stderr, "virtio-blk failed to set host notifier, ensure -enable-kvm is set\n");
         exit(1);
     }
     event_poll_add(&s->event_poll, &s->notify_handler,
