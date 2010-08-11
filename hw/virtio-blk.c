@@ -210,14 +210,8 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
 
     /* TODO Linux sets the barrier bit even when not advertised! */
     uint32_t type = outhdr->type & ~VIRTIO_BLK_T_BARRIER;
-
-    if (unlikely(type & ~(VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH))) {
-        fprintf(stderr, "virtio-blk unsupported request type %#x\n", outhdr->type);
-        exit(1);
-    }
-
     struct iocb *iocb;
-    switch (type & (VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_FLUSH)) {
+    switch (type & (VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_SCSI_CMD | VIRTIO_BLK_T_FLUSH)) {
     case VIRTIO_BLK_T_IN:
         if (unlikely(out_num != 1)) {
             fprintf(stderr, "virtio-blk invalid read request\n");
@@ -233,6 +227,21 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
         }
         iocb = ioq_rdwr(ioq, false, &iov[1], out_num - 1, outhdr->sector * 512UL); /* TODO is it always 512? */
         break;
+
+    case VIRTIO_BLK_T_SCSI_CMD:
+        if (unlikely(in_num == 0)) {
+            fprintf(stderr, "virtio-blk invalid SCSI command request\n");
+            exit(1);
+        }
+
+        /* TODO support SCSI commands */
+        {
+            VirtIOBlock *s = container_of(ioq, VirtIOBlock, ioqueue);
+            inhdr->status = VIRTIO_BLK_S_UNSUPP;
+            vring_push(&s->vring, head, sizeof *inhdr);
+            virtio_blk_notify_guest(s);
+        }
+        return;
 
     case VIRTIO_BLK_T_FLUSH:
         if (unlikely(in_num != 1 || out_num != 1)) {
@@ -251,7 +260,7 @@ static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_n
         return;
 
     default:
-        fprintf(stderr, "virtio-blk multiple request type bits set\n");
+        fprintf(stderr, "virtio-blk unsupported request type %#x\n", outhdr->type);
         exit(1);
     }
 
