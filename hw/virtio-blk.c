@@ -173,13 +173,17 @@ static void merge_request(struct iocb *iocb_a, struct iocb *iocb_b)
         req_a->len = iocb_nbytes(iocb_a);
     }
 
-    iocb_b->u.v.vec = iovec;
-    req_b->len = iocb_nbytes(iocb_b);
-    req_b->next_merged = req_a;
     /*
     fprintf(stderr, "merged %p (%u) and %p (%u), %u iovecs in total\n",
             req_a, iocb_a->u.v.nr, req_b, iocb_b->u.v.nr, iocb_a->u.v.nr + iocb_b->u.v.nr);
     */
+
+    iocb_b->u.v.vec = iovec;
+    iocb_b->u.v.nr += iocb_a->u.v.nr;
+    iocb_b->u.v.offset = iocb_a->u.v.offset;
+
+    req_b->len = iocb_nbytes(iocb_b);
+    req_b->next_merged = req_a;
 }
 
 static void process_request(IOQueue *ioq, struct iovec iov[], unsigned int out_num, unsigned int in_num, unsigned int head)
