@@ -133,6 +133,7 @@ int main(int argc, char **argv)
 #include "console.h"
 #include "sysemu.h"
 #include "gdbstub.h"
+#include "rcu.h"
 #include "qemu-timer.h"
 #include "qemu-char.h"
 #include "cache-utils.h"
@@ -2308,6 +2309,7 @@ int main(int argc, char **argv, char **envp)
 
     QLIST_INIT (&vm_change_state_head);
     os_setup_early_signal_handling();
+    rcu_register_thread();
 
     module_call_init(MODULE_INIT_MACHINE);
     machine = find_default_machine();

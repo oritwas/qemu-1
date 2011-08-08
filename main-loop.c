@@ -384,8 +384,9 @@ static void os_host_main_loop_wait(int *timeout)
         WaitObjects *w = &wait_objects;
 
         qemu_mutex_unlock_iothread();
+        rcu_thread_offline();
         ret = WaitForMultipleObjects(w->num, w->events, FALSE, *timeout);
-        qemu_mutex_lock_iothread();
+        rcu_thread_online();
         if (WAIT_OBJECT_0 + 0 <= ret && ret <= WAIT_OBJECT_0 + w->num - 1) {
             if (w->func[ret - WAIT_OBJECT_0]) {
                 w->func[ret - WAIT_OBJECT_0](w->opaque[ret - WAIT_OBJECT_0]);
@@ -454,7 +455,9 @@ int main_loop_wait(int nonblocking)
         qemu_mutex_unlock_iothread();
     }
 
+    rcu_thread_offline();
     ret = select(nfds + 1, &rfds, &wfds, &xfds, &tv);
+    rcu_thread_online();
 
     if (timeout > 0) {
         qemu_mutex_lock_iothread();

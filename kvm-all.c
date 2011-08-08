@@ -22,6 +22,7 @@
 
 #include "qemu-common.h"
 #include "qemu/atomic.h"
+#include "rcu.h"
 #include "sysemu.h"
 #include "hw/hw.h"
 #include "gdbstub.h"
@@ -1240,7 +1241,9 @@ int kvm_cpu_exec(CPUState *env)
         }
         qemu_mutex_unlock_iothread();
 
+        rcu_thread_offline();
         run_ret = kvm_vcpu_ioctl(env, KVM_RUN, 0);
+        rcu_thread_online();
 
         qemu_mutex_lock_iothread();
         kvm_arch_post_run(env, run);

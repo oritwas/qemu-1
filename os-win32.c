@@ -32,6 +32,7 @@
 #include "config-host.h"
 #include "sysemu.h"
 #include "qemu-options.h"
+#include "rcu.h"
 
 /***********************************************************/
 /* Functions missing in mingw */

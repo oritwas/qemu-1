@@ -33,6 +33,7 @@
 #include "qmp-commands.h"
 
 #include "qemu-thread.h"
+#include "rcu.h"
 #include "cpus.h"
 #include "main-loop.h"
 
@@ -646,7 +647,9 @@ void run_on_cpu(CPUState *env, void (*func)(void *data), void *data)
     while (!wi.done) {
         CPUState *self_env = cpu_single_env;
 
+        rcu_thread_offline();
         qemu_cond_wait(&qemu_work_cond, &qemu_global_mutex);
+        rcu_thread_online();
         cpu_single_env = self_env;
     }
 }
@@ -687,13 +690,16 @@ static void qemu_tcg_wait_io_event(void)
        /* Start accounting real time to the virtual clock if the CPUs
           are idle.  */
         qemu_clock_warp(vm_clock);
+        rcu_thread_offline();
         qemu_cond_wait(tcg_halt_cond, &qemu_global_mutex);
     }
 
     while (iothread_requesting_mutex) {
+        rcu_thread_offline();
         qemu_cond_wait(&qemu_io_proceeded_cond, &qemu_global_mutex);
     }
 
+    rcu_thread_online();
     for (env = first_cpu; env != NULL; env = env->next_cpu) {
         qemu_wait_io_event_common(env);
     }
@@ -702,9 +708,11 @@ static void qemu_tcg_wait_io_event(void)
 static void qemu_kvm_wait_io_event(CPUState *env)
 {
     while (cpu_thread_is_idle(env)) {
+        rcu_thread_offline();
         qemu_cond_wait(env->halt_cond, &qemu_global_mutex);
     }
 
+    rcu_thread_online();
     qemu_kvm_eat_signals(env);
     qemu_wait_io_event_common(env);
 }
@@ -714,6 +722,7 @@ static void *qemu_kvm_cpu_thread_fn(void *arg)
     CPUState *env = arg;
     int r;
 
+    rcu_register_thread();
     qemu_mutex_lock(&qemu_global_mutex);
     qemu_thread_get_self(env->thread);
     env->thread_id = qemu_get_thread_id();
@@ -750,6 +759,7 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
 {
     CPUState *env = arg;
 
+    rcu_register_thread();
     qemu_tcg_init_cpu_signals();
     qemu_thread_get_self(env->thread);
 
@@ -891,7 +901,9 @@ void pause_all_vcpus(void)
     }
 
     while (!all_vcpus_paused()) {
+        rcu_thread_offline();
         qemu_cond_wait(&qemu_pause_cond, &qemu_global_mutex);
+        rcu_thread_online();
         penv = first_cpu;
         while (penv) {
             qemu_cpu_kick(penv);
