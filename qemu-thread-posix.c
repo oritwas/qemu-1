@@ -216,6 +216,11 @@ void qemu_event_wait(QemuEvent *ev)
     }
 }
 
+void qemu_once(QemuOnce *o, void (*func)(void))
+{
+    pthread_once(&o->once, func);
+}
+
 void qemu_thread_create(QemuThread *thread,
                        void *(*start_routine)(void*),
                        void *arg, int mode)

@@ -7,6 +7,7 @@
 typedef struct QemuMutex QemuMutex;
 typedef struct QemuCond QemuCond;
 typedef struct QemuEvent QemuEvent;
+typedef struct QemuOnce QemuOnce;
 typedef struct QemuThread QemuThread;
 
 #ifdef _WIN32
@@ -63,6 +64,7 @@ static void __attribute__((constructor)) qemu_event_init_##event (void) { \
 }                                                                         \
 extern int dummy_event_init_##event
 
+void qemu_once(QemuOnce *o, void (*func)(void));
 
 void qemu_thread_create(QemuThread *thread,
                         void *(*start_routine)(void *),

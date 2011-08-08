@@ -12,6 +12,7 @@
  */
 #include "qemu-common.h"
 #include "qemu-thread.h"
+#include "qemu/atomic.h"
 #include <process.h>
 #include <assert.h>
 #include <limits.h>
@@ -216,6 +217,24 @@ void qemu_event_reset(QemuEvent *ev)
 void qemu_event_wait(QemuEvent *ev)
 {
     WaitForSingleObject(ev->event, INFINITE);
+}
+
+void qemu_once(QemuOnce *once, void (*func)(void))
+{
+    int old;
+    if (once->state != 2) {
+        old = __sync_val_compare_and_swap (&once->state, 0, 1);
+        if (old == 0) {
+            func();
+            once->state = 2;
+            smp_mb();
+            return;
+        }
+        /* Busy wait until the first thread gives us a green flag.  */
+        while (atomic_read(&once->state) == 1) {
+            Sleep(0);
+        }
+    }
 }
 
 struct QemuThreadData {

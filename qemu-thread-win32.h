@@ -17,6 +17,11 @@ struct QemuEvent {
     HANDLE event;
 };
 
+#define QEMU_ONCE_INIT { .state = 0 }
+struct QemuOnce {
+    int state;
+};
+
 typedef struct QemuThreadData QemuThreadData;
 struct QemuThread {
     QemuThreadData *data;

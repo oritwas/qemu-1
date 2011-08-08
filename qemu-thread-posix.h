@@ -18,6 +18,11 @@ struct QemuEvent {
     unsigned value;
 };
 
+#define QEMU_ONCE_INIT { .once = PTHREAD_ONCE_INIT }
+struct QemuOnce {
+    pthread_once_t once;
+};
+
 struct QemuThread {
     pthread_t thread;
 };
