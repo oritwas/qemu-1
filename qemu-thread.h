@@ -2,9 +2,11 @@
 #define __QEMU_THREAD_H 1
 
 #include <inttypes.h>
+#include <stdbool.h>
 
 typedef struct QemuMutex QemuMutex;
 typedef struct QemuCond QemuCond;
+typedef struct QemuEvent QemuEvent;
 typedef struct QemuThread QemuThread;
 
 #ifdef _WIN32
@@ -36,6 +38,12 @@ void qemu_cond_destroy(QemuCond *cond);
 void qemu_cond_signal(QemuCond *cond);
 void qemu_cond_broadcast(QemuCond *cond);
 void qemu_cond_wait(QemuCond *cond, QemuMutex *mutex);
+
+void qemu_event_init(QemuEvent *ev, bool init);
+void qemu_event_set(QemuEvent *ev);
+void qemu_event_reset(QemuEvent *ev);
+void qemu_event_wait(QemuEvent *ev);
+void qemu_event_destroy(QemuEvent *ev);
 
 void qemu_thread_create(QemuThread *thread,
                         void *(*start_routine)(void *),

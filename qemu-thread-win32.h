@@ -13,6 +13,10 @@ struct QemuCond {
     HANDLE continue_event;
 };
 
+struct QemuEvent {
+    HANDLE event;
+};
+
 typedef struct QemuThreadData QemuThreadData;
 struct QemuThread {
     QemuThreadData *data;
