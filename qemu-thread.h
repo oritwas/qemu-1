@@ -31,9 +31,6 @@ static void __attribute__((constructor)) qemu_mutex_init_##mutex (void) { \
 }                                                                         \
 extern int dummy_mutex_init_##mutex
 
-#define rcu_read_lock() do { } while (0)
-#define rcu_read_unlock() do { } while (0)
-
 void qemu_cond_init(QemuCond *cond);
 void qemu_cond_destroy(QemuCond *cond);
 

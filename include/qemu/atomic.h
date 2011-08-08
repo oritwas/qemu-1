@@ -66,6 +66,12 @@
 #define smp_mb()    __sync_synchronize()
 #endif
 
+#ifdef __alpha__
+#define smp_read_barrier_depends()   asm volatile("mb":::"memory")
+#else
+#define smp_read_barrier_depends()
+#endif
+
 #ifndef atomic_read
 #define atomic_read(ptr)       (*(__typeof__(*ptr) *volatile) (ptr))
 #endif
