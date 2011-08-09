@@ -21,7 +21,7 @@
 #include <linux/kvm.h>
 
 #include "qemu-common.h"
-#include "qemu-barrier.h"
+#include "qemu/atomic.h"
 #include "sysemu.h"
 #include "hw/hw.h"
 #include "gdbstub.h"
