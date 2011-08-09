@@ -132,6 +132,14 @@ extern void synchronize_rcu(void);
 extern void rcu_register_thread(void);
 extern void rcu_unregister_thread(void);
 
+struct rcu_head {
+	struct rcu_head *next;
+	void (*func)(struct rcu_head *head);
+};
+
+extern void call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *head));
+extern void rcu_free(struct rcu_head *head);
+
 #ifdef __cplusplus 
 }
 #endif
