@@ -16,6 +16,7 @@
 #include <sys/ioctl.h>
 #include "vhost.h"
 #include "hw/hw.h"
+#include "qemu/atomic.h"
 #include "range.h"
 #include <linux/vhost.h>
 #include "exec-memory.h"
@@ -46,11 +47,9 @@ static void vhost_dev_sync_region(struct vhost_dev *dev,
             addr += VHOST_LOG_CHUNK;
             continue;
         }
-        /* Data must be read atomically. We don't really
-         * need the barrier semantics of __sync
-         * builtins, but it's easier to use them than
-         * roll our own. */
-        log = __sync_fetch_and_and(from, 0);
+        /* Data must be read atomically. We don't really need barrier semantics
+         * but it's easier to use atomic_* than roll our own. */
+        log = atomic_xchg(from, 0);
         while ((bit = sizeof(log) > sizeof(int) ?
                 ffsll(log) : ffs(log))) {
             ram_addr_t ram_addr;
