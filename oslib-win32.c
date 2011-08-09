@@ -123,3 +123,8 @@ int qemu_get_thread_id(void)
 {
     return GetCurrentThreadId();
 }
+
+void qemu_msleep(int msec)
+{
+    Sleep(msec);
+}

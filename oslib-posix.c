@@ -61,6 +61,7 @@ static int running_on_valgrind = -1;
 #ifdef CONFIG_EVENTFD
 #include <sys/eventfd.h>
 #endif
+#include <sys/poll.h>
 
 int qemu_get_thread_id(void)
 {
@@ -250,4 +251,9 @@ int qemu_utimens(const char *path, const struct timespec *times)
     }
 
     return utimes(path, &tv[0]);
+}
+
+void qemu_msleep(int msec)
+{
+    poll(NULL, 0, msec);
 }
