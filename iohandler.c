@@ -27,17 +27,18 @@
 #include "qemu-char.h"
 #include "qemu-queue.h"
 #include "main-loop.h"
+#include "rcu.h"
 
 #ifndef _WIN32
 #include <sys/wait.h>
 #endif
 
 typedef struct IOHandlerRecord {
+    struct rcu_head h;
     int fd;
     IOCanReadHandler *fd_read_poll;
     IOHandler *fd_read;
     IOHandler *fd_write;
-    int deleted;
     void *opaque;
     QLIST_ENTRY(IOHandlerRecord) next;
 } IOHandlerRecord;
@@ -56,28 +57,26 @@ int qemu_set_fd_handler2(int fd,
 {
     IOHandlerRecord *ioh;
 
-    if (!fd_read && !fd_write) {
-        QLIST_FOREACH(ioh, &io_handlers, next) {
-            if (ioh->fd == fd) {
-                ioh->deleted = 1;
-                break;
-            }
+    //qemu_mutex_lock(&iohandler_lock);
+    QLIST_FOREACH(ioh, &io_handlers, next) {
+        if (ioh->fd == fd) {
+            break;
         }
-    } else {
-        QLIST_FOREACH(ioh, &io_handlers, next) {
-            if (ioh->fd == fd)
-                goto found;
-        }
+    }
+    if (ioh) {
+        QLIST_REMOVE(ioh, next);
+        call_rcu(&ioh->h, rcu_free);
+    }
+    if (fd_read || fd_write) {
         ioh = g_malloc0(sizeof(IOHandlerRecord));
-        QLIST_INSERT_HEAD(&io_handlers, ioh, next);
-    found:
         ioh->fd = fd;
         ioh->fd_read_poll = fd_read_poll;
         ioh->fd_read = fd_read;
         ioh->fd_write = fd_write;
         ioh->opaque = opaque;
-        ioh->deleted = 0;
+        QLIST_INSERT_HEAD(&io_handlers, ioh, next);
     }
+    //qemu_mutex_lock(&iohandler_unlock);
     return 0;
 }
 
@@ -93,9 +92,8 @@ void qemu_iohandler_fill(int *pnfds, fd_set *readfds, fd_set *writefds, fd_set *
 {
     IOHandlerRecord *ioh;
 
+    rcu_read_lock();
     QLIST_FOREACH(ioh, &io_handlers, next) {
-        if (ioh->deleted)
-            continue;
         if (ioh->fd_read &&
             (!ioh->fd_read_poll ||
              ioh->fd_read_poll(ioh->opaque) != 0)) {
@@ -109,6 +107,7 @@ void qemu_iohandler_fill(int *pnfds, fd_set *readfds, fd_set *writefds, fd_set *
                 *pnfds = ioh->fd;
         }
     }
+    rcu_read_unlock();
 }
 
 void qemu_iohandler_poll(fd_set *readfds, fd_set *writefds, fd_set *xfds, int ret)
@@ -116,20 +115,16 @@ void qemu_iohandler_poll(fd_set *readfds, fd_set *writefds, fd_set *xfds, int re
     if (ret > 0) {
         IOHandlerRecord *pioh, *ioh;
 
+        rcu_read_lock();
         QLIST_FOREACH_SAFE(ioh, &io_handlers, next, pioh) {
-            if (!ioh->deleted && ioh->fd_read && FD_ISSET(ioh->fd, readfds)) {
+            if (ioh->fd_read && FD_ISSET(ioh->fd, readfds)) {
                 ioh->fd_read(ioh->opaque);
             }
-            if (!ioh->deleted && ioh->fd_write && FD_ISSET(ioh->fd, writefds)) {
+            if (ioh->fd_write && FD_ISSET(ioh->fd, writefds)) {
                 ioh->fd_write(ioh->opaque);
             }
-
-            /* Do this last in case read/write handlers marked it for deletion */
-            if (ioh->deleted) {
-                QLIST_REMOVE(ioh, next);
-                g_free(ioh);
-            }
         }
+        rcu_read_unlock();
     }
 }
 
