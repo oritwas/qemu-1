@@ -54,7 +54,7 @@ void qemu_notify_event(void)
     }
 }
 
-static void qemu_event_read(void *opaque)
+static void qemu_eventfd_read(void *opaque)
 {
     int fd = (intptr_t)opaque;
     ssize_t len;
@@ -66,7 +66,7 @@ static void qemu_event_read(void *opaque)
     } while ((len == -1 && errno == EINTR) || len == sizeof(buffer));
 }
 
-static int qemu_event_init(void)
+static int qemu_eventfd_init(void)
 {
     int err;
     int fds[2];
@@ -83,7 +83,7 @@ static int qemu_event_init(void)
     if (err < 0) {
         goto fail;
     }
-    qemu_set_fd_handler2(fds[0], NULL, qemu_event_read, NULL,
+    qemu_set_fd_handler2(fds[0], NULL, qemu_eventfd_read, NULL,
                          (void *)(intptr_t)fds[0]);
 
     io_thread_fd = fds[1];
@@ -170,7 +170,7 @@ static void dummy_event_handler(void *opaque)
 {
 }
 
-static int qemu_event_init(void)
+static int qemu_eventfd_init(void)
 {
     qemu_event_handle = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (!qemu_event_handle) {
@@ -210,7 +210,7 @@ int main_loop_init(void)
     }
 
     /* Note eventfd must be drained before signalfd handlers run */
-    ret = qemu_event_init();
+    ret = qemu_eventfd_init();
     if (ret) {
         return ret;
     }
