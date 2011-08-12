@@ -137,6 +137,7 @@ static int ram_save_block(QEMUFile *f)
     int bytes_sent = 0;
     MemoryRegion *mr;
 
+    rcu_read_lock();
     if (!block)
         block = QLIST_FIRST(&ram_list.blocks);
 
@@ -183,6 +184,7 @@ static int ram_save_block(QEMUFile *f)
                 block = QLIST_FIRST(&ram_list.blocks);
         }
     } while (block != last_block || offset != last_offset);
+    rcu_read_unlock();
 
     last_block = block;
     last_offset = offset;
@@ -197,6 +199,7 @@ static ram_addr_t ram_save_remaining(void)
     RAMBlock *block;
     ram_addr_t count = 0;
 
+    rcu_read_lock();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         ram_addr_t addr;
         for (addr = 0; addr < block->length; addr += TARGET_PAGE_SIZE) {
@@ -206,6 +209,7 @@ static ram_addr_t ram_save_remaining(void)
             }
         }
     }
+    rcu_read_unlock();
 
     return count;
 }
@@ -225,8 +229,10 @@ uint64_t ram_bytes_total(void)
     RAMBlock *block;
     uint64_t total = 0;
 
+    rcu_read_lock();
     QLIST_FOREACH(block, &ram_list.blocks, next)
         total += block->length;
+    rcu_read_unlock();
 
     return total;
 }
@@ -244,6 +250,7 @@ static void sort_ram_list(void)
     RAMBlock *block, *nblock, **blocks;
     int n;
     n = 0;
+    qemu_mutex_lock_ramlist();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         ++n;
     }
@@ -257,6 +264,7 @@ static void sort_ram_list(void)
     while (--n >= 0) {
         QLIST_INSERT_HEAD(&ram_list.blocks, blocks[n], next);
     }
+    qemu_mutex_unlock_ramlist();
     g_free(blocks);
 }
 
@@ -275,6 +283,7 @@ int ram_save_live(Monitor *mon, QEMUFile *f, int stage, void *opaque)
 
     memory_global_sync_dirty_bitmap(get_system_memory());
 
+    qemu_mutex_lock_ramlist();
     if (stage == 1) {
         RAMBlock *block;
         bytes_transferred = 0;
@@ -283,6 +292,7 @@ int ram_save_live(Monitor *mon, QEMUFile *f, int stage, void *opaque)
         sort_ram_list();
 
         /* Make sure all dirty bits are set */
+        rcu_read_lock();
         QLIST_FOREACH(block, &ram_list.blocks, next) {
             for (addr = 0; addr < block->length; addr += TARGET_PAGE_SIZE) {
                 if (!memory_region_get_dirty(block->mr, addr, TARGET_PAGE_SIZE,
@@ -291,16 +301,19 @@ int ram_save_live(Monitor *mon, QEMUFile *f, int stage, void *opaque)
                 }
             }
         }
+        rcu_read_unlock();
 
         memory_global_dirty_log_start();
 
         qemu_put_be64(f, ram_bytes_total() | RAM_SAVE_FLAG_MEM_SIZE);
 
+        rcu_read_lock();
         QLIST_FOREACH(block, &ram_list.blocks, next) {
             qemu_put_byte(f, strlen(block->idstr));
             qemu_put_buffer(f, (uint8_t *)block->idstr, strlen(block->idstr));
             qemu_put_be64(f, block->length);
         }
+        rcu_read_unlock();
     }
 
     bytes_transferred_last = bytes_transferred;
@@ -340,6 +353,7 @@ int ram_save_live(Monitor *mon, QEMUFile *f, int stage, void *opaque)
         memory_global_dirty_log_stop();
     }
 
+    qemu_mutex_unlock_ramlist();
     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
 
     expected_time = ram_save_remaining() * TARGET_PAGE_SIZE / bwidth;
@@ -387,6 +401,7 @@ int ram_load(QEMUFile *f, void *opaque, int version_id)
         return -EINVAL;
     }
 
+    rcu_read_lock();
     do {
         addr = qemu_get_be64(f);
 
@@ -457,6 +472,7 @@ int ram_load(QEMUFile *f, void *opaque, int version_id)
             return error;
         }
     } while (!(flags & RAM_SAVE_FLAG_EOS));
+    rcu_read_unlock();
 
     return 0;
 }

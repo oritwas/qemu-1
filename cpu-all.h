@@ -22,6 +22,8 @@
 #include "qemu-common.h"
 #include "qemu-tls.h"
 #include "cpu-common.h"
+#include "qemu-thread.h"
+#include "rcu.h"
 
 /* some important defines:
  *
@@ -477,13 +479,16 @@ extern ram_addr_t ram_size;
 #define RAM_PREALLOC_MASK   (1 << 0)
 
 typedef struct RAMBlock {
+    struct rcu_head h;
     struct MemoryRegion *mr;
     uint8_t *host;
     ram_addr_t offset;
     ram_addr_t length;
     uint32_t flags;
-    QLIST_ENTRY(RAMBlock) next;
+    /* Protected by the iothread lock.  */
     QLIST_ENTRY(RAMBlock) next_mru;
+    /* Protected by the ramlist lock.  */
+    QLIST_ENTRY(RAMBlock) next;
     char idstr[256];
 #if defined(__linux__) && !defined(TARGET_S390X)
     int fd;
@@ -491,9 +496,12 @@ typedef struct RAMBlock {
 } RAMBlock;
 
 typedef struct RAMList {
+    QemuMutex mutex;
+    /* Protected by the iothread lock.  */
     uint8_t *phys_dirty;
-    QLIST_HEAD(, RAMBlock) blocks;
     QLIST_HEAD(, RAMBlock) blocks_mru;
+    /* Protected by the ramlist lock.  */
+    QLIST_HEAD(, RAMBlock) blocks;
 } RAMList;
 extern RAMList ram_list;
 
@@ -522,6 +530,9 @@ void cpu_tlb_update_dirty(CPUState *env);
 
 void dump_exec_info(FILE *f, fprintf_function cpu_fprintf);
 #endif /* !CONFIG_USER_ONLY */
+
+void qemu_mutex_lock_ramlist(void);
+void qemu_mutex_unlock_ramlist(void);
 
 int cpu_memory_rw_debug(CPUState *env, target_ulong addr,
                         uint8_t *buf, int len, int is_write);

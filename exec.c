@@ -656,6 +656,7 @@ bool tcg_enabled(void)
 
 void cpu_exec_init_all(void)
 {
+    qemu_mutex_init(&ram_list.mutex);
 #if !defined(CONFIG_USER_ONLY)
     memory_map_init();
     io_mem_init();
@@ -2745,6 +2746,16 @@ static long gethugepagesize(const char *path)
     return fs.f_bsize;
 }
 
+void qemu_mutex_lock_ramlist(void)
+{
+    qemu_mutex_lock(&ram_list.mutex);
+}
+
+void qemu_mutex_unlock_ramlist(void)
+{
+    qemu_mutex_unlock(&ram_list.mutex);
+}
+
 static void *file_ram_alloc(RAMBlock *block,
                             ram_addr_t memory,
                             const char *path)
@@ -2882,6 +2893,7 @@ void qemu_ram_set_idstr(ram_addr_t addr, const char *name, DeviceState *dev)
     }
     pstrcat(new_block->idstr, sizeof(new_block->idstr), name);
 
+    qemu_mutex_lock_ramlist();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         if (block != new_block && !strcmp(block->idstr, new_block->idstr)) {
             fprintf(stderr, "RAMBlock \"%s\" already registered, abort!\n",
@@ -2943,6 +2955,7 @@ ram_addr_t qemu_ram_alloc_from_ptr(ram_addr_t size, void *host,
     new_block->length = size;
 
     QLIST_INSERT_HEAD(&ram_list.blocks, new_block, next);
+    qemu_mutex_unlock_ramlist();
     QLIST_INSERT_HEAD(&ram_list.blocks_mru, new_block, next_mru);
 
     ram_list.phys_dirty = g_realloc(ram_list.phys_dirty,
@@ -2965,52 +2978,64 @@ void qemu_ram_free_from_ptr(ram_addr_t addr)
 {
     RAMBlock *block;
 
+    qemu_mutex_lock_ramlist();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         if (addr == block->offset) {
             QLIST_REMOVE(block, next);
             QLIST_REMOVE(block, next_mru);
-            g_free(block);
-            return;
+            call_rcu(&block->h, rcu_free);
+            break;
         }
     }
+    qemu_mutex_unlock_ramlist();
+}
+
+static void rcu_free_block(struct rcu_head *h)
+{
+    RAMBlock *block = container_of(h, RAMBlock, h);
+    if (block->flags & RAM_PREALLOC_MASK) {
+        ;
+    } else if (mem_path) {
+#if defined (__linux__) && !defined(TARGET_S390X)
+        if (block->fd) {
+            munmap(block->host, block->length);
+            close(block->fd);
+        } else {
+            qemu_vfree(block->host);
+        }
+#else
+        abort();
+#endif
+    } else {
+#if defined(TARGET_S390X) && defined(CONFIG_KVM)
+        munmap(block->host, block->length);
+#else
+        if (xen_enabled()) {
+            qemu_mutex_lock_iothread();
+            xen_invalidate_map_cache_entry(block->host);
+            qemu_mutex_unlock_iothread();
+        } else {
+            qemu_vfree(block->host);
+        }
+#endif
+    }
+    g_free(block);
 }
 
 void qemu_ram_free(ram_addr_t addr)
 {
     RAMBlock *block;
 
+    qemu_mutex_lock_ramlist();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         if (addr == block->offset) {
             QLIST_REMOVE(block, next);
             QLIST_REMOVE(block, next_mru);
-            if (block->flags & RAM_PREALLOC_MASK) {
-                ;
-            } else if (mem_path) {
-#if defined (__linux__) && !defined(TARGET_S390X)
-                if (block->fd) {
-                    munmap(block->host, block->length);
-                    close(block->fd);
-                } else {
-                    qemu_vfree(block->host);
-                }
-#else
-                abort();
-#endif
-            } else {
-#if defined(TARGET_S390X) && defined(CONFIG_KVM)
-                munmap(block->host, block->length);
-#else
-                if (xen_enabled()) {
-                    xen_invalidate_map_cache_entry(block->host);
-                } else {
-                    qemu_vfree(block->host);
-                }
-#endif
-            }
-            g_free(block);
-            return;
+            call_rcu(&block->h, rcu_free_block);
+            break;
         }
     }
+    qemu_mutex_unlock_ramlist();
 
 }
 
@@ -3022,6 +3047,7 @@ void qemu_ram_remap(ram_addr_t addr, ram_addr_t length)
     int flags;
     void *area, *vaddr;
 
+    rcu_read_lock();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         offset = addr - block->offset;
         if (offset < block->length) {
@@ -3029,8 +3055,9 @@ void qemu_ram_remap(ram_addr_t addr, ram_addr_t length)
             if (block->flags & RAM_PREALLOC_MASK) {
                 ;
             } else {
+		/* No need to munmap the memory, mmap will discard the old mapping
+		 * atomically.  */
                 flags = MAP_FIXED;
-                munmap(vaddr, length);
                 if (mem_path) {
 #if defined(__linux__) && !defined(TARGET_S390X)
                     if (block->fd) {
@@ -3069,9 +3096,10 @@ void qemu_ram_remap(ram_addr_t addr, ram_addr_t length)
                 }
                 qemu_madvise(vaddr, length, QEMU_MADV_MERGEABLE);
             }
-            return;
+            break;
         }
     }
+    rcu_read_unlock();
 }
 #endif /* !_WIN32 */
 
@@ -3085,8 +3113,16 @@ void qemu_ram_remap(ram_addr_t addr, ram_addr_t length)
  */
 void *qemu_get_ram_ptr(ram_addr_t addr)
 {
+    uint8_t *p = NULL;
     RAMBlock *block;
 
+    /* RCU protects the "existence" of the blocks, the iothread lock
+     * protects the next_mru chain.  This rcu_read_lock() is most
+     * likely nested, since the caller probably wants to do something
+     * with the result as well!  FIXME: this is not done anywhere yet.
+     * Due to our RCU implementation we can avoid that, but it's not
+     * clean. */
+    rcu_read_lock();
     QLIST_FOREACH(block, &ram_list.blocks_mru, next_mru) {
         if (addr - block->offset < block->length) {
             /* Move this entry to to start of the list.  */
@@ -3100,20 +3136,24 @@ void *qemu_get_ram_ptr(ram_addr_t addr)
                  * In that case just map until the end of the page.
                  */
                 if (block->offset == 0) {
-                    return xen_map_cache(addr, 0, 0);
+                    p = xen_map_cache(addr, 0, 0);
+		    break;
                 } else if (block->host == NULL) {
                     block->host =
                         xen_map_cache(block->offset, block->length, 1);
                 }
             }
-            return block->host + (addr - block->offset);
+	    p = block->host + (addr - block->offset);
+            break;
         }
     }
+    rcu_read_unlock();
 
-    fprintf(stderr, "Bad ram offset %" PRIx64 "\n", (uint64_t)addr);
-    abort();
-
-    return NULL;
+    if (!p) {
+        fprintf(stderr, "Bad ram offset %" PRIx64 "\n", (uint64_t)addr);
+        abort();
+    }
+    return p;
 }
 
 /* Return a host pointer to ram allocated with qemu_ram_alloc.
@@ -3121,8 +3161,10 @@ void *qemu_get_ram_ptr(ram_addr_t addr)
  */
 void *qemu_safe_ram_ptr(ram_addr_t addr)
 {
+    uint8_t *p = NULL;
     RAMBlock *block;
 
+    rcu_read_lock();
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         if (addr - block->offset < block->length) {
             if (xen_enabled()) {
@@ -3131,20 +3173,25 @@ void *qemu_safe_ram_ptr(ram_addr_t addr)
                  * In that case just map until the end of the page.
                  */
                 if (block->offset == 0) {
-                    return xen_map_cache(addr, 0, 0);
+                    p = xen_map_cache(addr, 0, 0);
+		    break;
                 } else if (block->host == NULL) {
                     block->host =
                         xen_map_cache(block->offset, block->length, 1);
                 }
             }
-            return block->host + (addr - block->offset);
+            p = block->host + (addr - block->offset);
+	    break;
         }
     }
+    rcu_read_unlock();
 
-    fprintf(stderr, "Bad ram offset %" PRIx64 "\n", (uint64_t)addr);
-    abort();
+    if (!p) {
+        fprintf(stderr, "Bad ram offset %" PRIx64 "\n", (uint64_t)addr);
+        abort();
+    }
 
-    return NULL;
+    return p;
 }
 
 /* Return a host pointer to guest's ram. Similar to qemu_get_ram_ptr
@@ -3159,13 +3206,16 @@ void *qemu_ram_ptr_length(ram_addr_t addr, ram_addr_t *size)
     } else {
         RAMBlock *block;
 
+	rcu_read_lock();
         QLIST_FOREACH(block, &ram_list.blocks, next) {
             if (addr - block->offset < block->length) {
                 if (addr - block->offset + *size > block->length)
                     *size = block->length - addr + block->offset;
+	        rcu_read_unlock();
                 return block->host + (addr - block->offset);
             }
         }
+	rcu_read_unlock();
 
         fprintf(stderr, "Bad ram offset %" PRIx64 "\n", (uint64_t)addr);
         abort();
@@ -3187,6 +3237,13 @@ int qemu_ram_addr_from_host(void *ptr, ram_addr_t *ram_addr)
         return 0;
     }
 
+    /* RCU protects the "existence" of the blocks, the iothread lock
+     * protects the next_mru chain.  This rcu_read_lock() is most
+     * likely nested, since the caller probably wants to do something
+     * with the result as well!  FIXME: this is not done anywhere yet.
+     * Due to our RCU implementation we can avoid that, but it's not
+     * clean. */
+    rcu_read_lock();
     QLIST_FOREACH(block, &ram_list.blocks_mru, next_mru) {
         /* This case append when the block is not mapped. */
         if (block->host == NULL) {
@@ -3194,9 +3251,11 @@ int qemu_ram_addr_from_host(void *ptr, ram_addr_t *ram_addr)
         }
         if (host - block->host < block->length) {
             *ram_addr = block->offset + (host - block->host);
+	    rcu_read_unlock();
             return 0;
         }
     }
+    rcu_read_unlock();
 
     return -1;
 }
