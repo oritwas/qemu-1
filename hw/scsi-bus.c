@@ -134,6 +134,7 @@ static int scsi_qdev_init(DeviceState *qdev)
     SCSIBus *bus = DO_UPCAST(SCSIBus, qbus, dev->qdev.parent_bus);
     SCSIDevice *d;
     int rc = -1;
+    bool reported_luns_changed = false;
 
     if (dev->channel > bus->info->max_channel) {
         error_report("bad scsi channel id: %d", dev->channel);
@@ -155,6 +156,7 @@ static int scsi_qdev_init(DeviceState *qdev)
         }
         do {
             d = scsi_device_find(bus, dev->channel, ++id, dev->lun);
+            reported_luns_changed |= (d != NULL);
         } while (d && d->lun == dev->lun && id < bus->info->max_target);
         if (d && d->lun == dev->lun) {
             error_report("no free target");
@@ -165,6 +167,7 @@ static int scsi_qdev_init(DeviceState *qdev)
         int lun = -1;
         do {
             d = scsi_device_find(bus, dev->channel, dev->id, ++lun);
+            reported_luns_changed |= (d != NULL);
         } while (d && d->lun == lun && lun < bus->info->max_lun);
         if (d && d->lun == lun) {
             error_report("no free lun");
@@ -174,11 +177,16 @@ static int scsi_qdev_init(DeviceState *qdev)
     } else {
         d = scsi_device_find(bus, dev->channel, dev->id, dev->lun);
         assert(d);
+        reported_luns_changed = (dev != d);
         if (d->lun == dev->lun && dev != d) {
             qdev_free(&d->qdev);
         }
     }
 
+    if (reported_luns_changed) {
+        /* FIXME: this should be per-target, not per-bus.  */
+        bus->unit_attention = SENSE_CODE(REPORTED_LUNS_CHANGED);
+    }
     QTAILQ_INIT(&dev->requests);
     rc = scsi_device_init(dev);
     if (rc == 0) {
