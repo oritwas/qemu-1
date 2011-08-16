@@ -1317,6 +1317,23 @@ EOF
 fi
 
 ##########################################
+# __thread check
+
+if test "$mingw32" = "yes" ; then
+    tls_model=win32
+else
+    cat > $TMPC << EOF
+__thread int x;
+int main() { return x; }
+EOF
+    if compile_prog "" "" ; then
+        tls_model=gcc
+    else
+        tls_model=pthread
+    fi
+fi
+
+##########################################
 # zlib check
 
 if test "$zlib" != "no" ; then
@@ -2908,6 +2925,7 @@ echo "Documentation     $docs"
 [ ! -z "$uname_release" ] && \
 echo "uname -r          $uname_release"
 echo "NPTL support      $nptl"
+echo "TLS support       $tls_model"
 echo "GUEST_BASE        $guest_base"
 echo "PIE               $pie"
 echo "vde support       $vde"
@@ -3833,6 +3851,8 @@ if test "$target_linux_user" = "yes" -o "$target_bsd_user" = "yes" ; then
     ;;
   esac
 fi
+
+symlink $source_path/qemu-tls-$tls_model.h qemu-tls.h
 
 echo "LDFLAGS+=$ldflags" >> $config_target_mak
 echo "QEMU_CFLAGS+=$cflags" >> $config_target_mak

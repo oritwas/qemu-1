@@ -17,6 +17,22 @@
 #include <assert.h>
 #include <limits.h>
 
+/* TLS support.  */
+
+int __attribute__((section(".tls$000"))) _tls_start = 0;
+int __attribute__((section(".tls$ZZZ"))) _tls_end = 0;
+int _tls_index = 0;
+
+const IMAGE_TLS_DIRECTORY _tls_used __attribute__((used, section(".rdata$T"))) = {
+ (ULONG)(ULONG_PTR) &_tls_start, /* start of tls data */
+ (ULONG)(ULONG_PTR) &_tls_end,   /* end of tls data */
+ (ULONG)(ULONG_PTR) &_tls_index, /* address of tls_index */
+ (ULONG) 0,                      /* pointer to callbacks */
+ (ULONG) 0,                      /* size of tls zero fill */
+ (ULONG) 0                       /* characteristics */
+};
+
+
 static void error_exit(int err, const char *msg)
 {
     char *pstr;

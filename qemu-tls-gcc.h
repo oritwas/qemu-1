@@ -1,5 +1,5 @@
 /*
- * Abstraction layer for defining and using TLS variables
+ * TLS with __thread
  *
  * Copyright (c) 2011 Red Hat, Inc
  * Copyright (c) 2011 Linaro Limited
@@ -22,31 +22,15 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef QEMU_TLS_H
-#define QEMU_TLS_H
+#ifndef QEMU_TLS_GCC_H
+#define QEMU_TLS_GCC_H
 
-/* Per-thread variables. Note that we only have implementations
- * which are really thread-local on Linux; the dummy implementations
- * define plain global variables.
- *
- * This means that for the moment use should be restricted to
- * per-VCPU variables, which are OK because:
- *  - the only -user mode supporting multiple VCPU threads is linux-user
- *  - TCG system mode is single-threaded regarding VCPUs
- *  - KVM system mode is multi-threaded but limited to Linux
- *
- * TODO: proper implementations via Win32 .tls sections and
- * POSIX pthread_getspecific.
- */
-#ifdef __linux__
 #define DECLARE_TLS(type, x) extern DEFINE_TLS(type, x)
 #define DEFINE_TLS(type, x)  __thread __typeof__(type) tls__##x
 #define tls_var(x)           tls__##x
-#else
-/* Dummy implementations which define plain global variables */
-#define DECLARE_TLS(type, x) extern DEFINE_TLS(type, x)
-#define DEFINE_TLS(type, x)  __typeof__(type) tls__##x
-#define tls_var(x)           tls__##x
-#endif
+
+extern size_t tls_init(size_t size, size_t alignment);
+static inline size_t _tls_init(size_t size, size_t alignment) { return 0; }
+static inline void _tls_init_thread(void) {}
 
 #endif
