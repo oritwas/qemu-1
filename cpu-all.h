@@ -496,6 +496,7 @@ typedef struct RAMBlock {
 
 typedef struct RAMList {
     uint8_t *phys_dirty;
+    uint32_t version;
     /* memory blocks are sorted in most recently used order */
     QLIST_HEAD(, RAMBlock) blocks_mru;
     /* memory blocks sorted by address */
