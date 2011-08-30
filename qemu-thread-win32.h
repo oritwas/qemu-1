@@ -3,8 +3,8 @@
 #include "windows.h"
 
 struct QemuMutex {
-    CRITICAL_SECTION lock;
-    LONG owner;
+    HANDLE sema;
+    LONG count;
 };
 
 struct QemuCond {
