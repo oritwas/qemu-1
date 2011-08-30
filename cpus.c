@@ -593,7 +593,11 @@ static void qemu_tcg_init_cpu_signals(void)
 #endif /* _WIN32 */
 
 QemuMutex qemu_global_mutex;
+qemu_mutex_init_global(qemu_global_mutex);
+
 static QemuCond qemu_io_proceeded_cond;
+qemu_cond_init_global(qemu_io_proceeded_cond);
+
 static bool iothread_requesting_mutex;
 
 static QemuThread io_thread;
@@ -603,19 +607,18 @@ static QemuCond *tcg_halt_cond;
 
 /* cpu creation */
 static QemuCond qemu_cpu_cond;
+qemu_cond_init_global(qemu_cpu_cond);
+
 /* system init */
 static QemuCond qemu_pause_cond;
+qemu_cond_init_global(qemu_pause_cond);
+
 static QemuCond qemu_work_cond;
+qemu_cond_init_global(qemu_work_cond);
 
 void qemu_init_cpu_loop(void)
 {
     qemu_init_sigbus();
-    qemu_cond_init(&qemu_cpu_cond);
-    qemu_cond_init(&qemu_pause_cond);
-    qemu_cond_init(&qemu_work_cond);
-    qemu_cond_init(&qemu_io_proceeded_cond);
-    qemu_mutex_init(&qemu_global_mutex);
-
     qemu_thread_get_self(&io_thread);
 }
 

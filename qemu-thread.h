@@ -24,11 +24,23 @@ void qemu_mutex_lock(QemuMutex *mutex);
 int qemu_mutex_trylock(QemuMutex *mutex);
 void qemu_mutex_unlock(QemuMutex *mutex);
 
+#define qemu_mutex_init_global(mutex)                                     \
+static void __attribute__((constructor)) qemu_mutex_init_##mutex (void) { \
+    qemu_mutex_init(&(mutex));                                            \
+}                                                                         \
+extern int dummy_mutex_init_##mutex
+
 #define rcu_read_lock() do { } while (0)
 #define rcu_read_unlock() do { } while (0)
 
 void qemu_cond_init(QemuCond *cond);
 void qemu_cond_destroy(QemuCond *cond);
+
+#define qemu_cond_init_global(cond)                                     \
+static void __attribute__((constructor)) qemu_cond_init_##cond (void) { \
+    qemu_cond_init(&(cond));                                            \
+}                                                                       \
+extern int dummy_cond_init_##mutex
 
 /*
  * IMPORTANT: The implementation does not guarantee that pthread_cond_signal
@@ -44,6 +56,13 @@ void qemu_event_set(QemuEvent *ev);
 void qemu_event_reset(QemuEvent *ev);
 void qemu_event_wait(QemuEvent *ev);
 void qemu_event_destroy(QemuEvent *ev);
+
+#define qemu_event_init_global(event, value)                                     \
+static void __attribute__((constructor)) qemu_event_init_##event (void) { \
+    qemu_event_init(&(event), (value));                                   \
+}                                                                         \
+extern int dummy_event_init_##event
+
 
 void qemu_thread_create(QemuThread *thread,
                         void *(*start_routine)(void *),
