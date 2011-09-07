@@ -135,6 +135,7 @@ typedef struct BDRVRawState {
 #endif
     uint8_t *aligned_buf;
     unsigned aligned_buf_size;
+    bool has_discard : 1;
 #ifdef CONFIG_XFS
     bool is_xfs : 1;
 #endif
@@ -261,11 +262,9 @@ static int raw_open_common(BlockDriverState *bs, const char *filename,
     }
 
 #ifdef CONFIG_XFS
-    if (platform_test_xfs_fd(s->fd)) {
-        s->is_xfs = 1;
-    }
+    s->is_xfs = platform_test_xfs_fd(s->fd);
 #endif
-
+    s->has_discard = 1;
     return 0;
 
 out_free_buf:
@@ -709,15 +708,31 @@ static int xfs_discard(BDRVRawState *s, int64_t sector_num, int nb_sectors)
 static coroutine_fn int raw_co_discard(BlockDriverState *bs,
     int64_t sector_num, int nb_sectors)
 {
-#ifdef CONFIG_XFS
     BDRVRawState *s = bs->opaque;
+    int retval;
 
+    if (s->has_discard == 0) {
+        return 0;
+    }
+#ifdef CONFIG_XFS
     if (s->is_xfs) {
         return xfs_discard(s, sector_num, nb_sectors);
     }
 #endif
 
-    return 0;
+#ifdef FALLOC_FL_PUNCH_HOLE
+    retval = fallocate(s->fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,
+                       sector_num << 9, (int64_t)nb_sectors << 9);
+    if (retval = -1 &&
+        (errno == ENODEV || errno == ENOSYS || errno == EOPNOTSUPP)) {
+        s->has_discard = 0;
+        retval = 0;
+    }
+#else
+    retval = 0;
+    s->has_discard = 0;
+#endif
+    return retval;
 }
 
 static QEMUOptionParameter raw_create_options[] = {
