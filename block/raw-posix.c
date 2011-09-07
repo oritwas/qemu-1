@@ -83,10 +83,6 @@
 #include <sys/diskslice.h>
 #endif
 
-#ifdef CONFIG_XFS
-#include <xfs/xfs.h>
-#endif
-
 //#define DEBUG_FLOPPY
 
 //#define DEBUG_BLOCK
@@ -136,9 +132,7 @@ typedef struct BDRVRawState {
     int use_aio;
     void *aio_ctx;
 #endif
-#ifdef CONFIG_XFS
-    bool is_xfs : 1;
-#endif
+    bool has_discard : 1;
 } BDRVRawState;
 
 typedef struct BDRVRawReopenState {
@@ -290,12 +284,7 @@ static int raw_open_common(BlockDriverState *bs, const char *filename,
     }
 #endif
 
-#ifdef CONFIG_XFS
-    if (platform_test_xfs_fd(s->fd)) {
-        s->is_xfs = 1;
-    }
-#endif
-
+    s->has_discard = 1;
     return 0;
 }
 
@@ -1089,37 +1078,29 @@ static int coroutine_fn raw_co_is_allocated(BlockDriverState *bs,
     }
 }
 
-#ifdef CONFIG_XFS
-static int xfs_discard(BDRVRawState *s, int64_t sector_num, int nb_sectors)
-{
-    struct xfs_flock64 fl;
-
-    memset(&fl, 0, sizeof(fl));
-    fl.l_whence = SEEK_SET;
-    fl.l_start = sector_num << 9;
-    fl.l_len = (int64_t)nb_sectors << 9;
-
-    if (xfsctl(NULL, s->fd, XFS_IOC_UNRESVSP64, &fl) < 0) {
-        DEBUG_BLOCK_PRINT("cannot punch hole (%s)\n", strerror(errno));
-        return -errno;
-    }
-
-    return 0;
-}
-#endif
-
 static coroutine_fn int raw_co_discard(BlockDriverState *bs,
     int64_t sector_num, int nb_sectors)
 {
-#ifdef CONFIG_XFS
     BDRVRawState *s = bs->opaque;
+    int retval;
 
-    if (s->is_xfs) {
-        return xfs_discard(s, sector_num, nb_sectors);
+    if (s->has_discard == 0) {
+        return 0;
     }
-#endif
 
-    return 0;
+#ifdef FALLOC_FL_PUNCH_HOLE
+    retval = fallocate(s->fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,
+                       sector_num << 9, (int64_t)nb_sectors << 9);
+    if (retval = -1 &&
+        (errno == ENODEV || errno == ENOSYS || errno == EOPNOTSUPP)) {
+        s->has_discard = 0;
+        retval = 0;
+    }
+#else
+    retval = 0;
+    s->has_discard = 0;
+#endif
+    return retval;
 }
 
 static QEMUOptionParameter raw_create_options[] = {
