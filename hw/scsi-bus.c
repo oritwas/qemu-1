@@ -1384,6 +1384,26 @@ const struct SCSISense sense_code_WRITE_PROTECTED = {
     .key = DATA_PROTECT, .asc = 0x27, .ascq = 0x00
 };
 
+SCSISense scsi_parse_sense(uint8_t *in_buf, int in_len)
+{
+    bool fixed_in;
+    SCSISense sense = { 0 };
+    if (in_len != 0) {
+        fixed_in = (in_buf[0] & 2) == 0;
+
+        if (fixed_in) {
+            sense.key = in_buf[2];
+            sense.asc = in_buf[12];
+            sense.ascq = in_buf[13];
+        } else {
+            sense.key = in_buf[1];
+            sense.asc = in_buf[2];
+            sense.ascq = in_buf[3];
+        }
+    }
+    return sense;
+}
+
 /*
  * scsi_build_sense
  *
@@ -1398,29 +1418,15 @@ int scsi_build_sense(uint8_t *in_buf, int in_len,
         return 0;
     }
 
-    if (in_len == 0) {
-        sense.key = NO_SENSE;
-        sense.asc = 0;
-        sense.ascq = 0;
-    } else {
+    if (in_len) {
         fixed_in = (in_buf[0] & 2) == 0;
-
         if (fixed == fixed_in) {
             memcpy(buf, in_buf, MIN(len, in_len));
             return MIN(len, in_len);
         }
-
-        if (fixed_in) {
-            sense.key = in_buf[2];
-            sense.asc = in_buf[12];
-            sense.ascq = in_buf[13];
-        } else {
-            sense.key = in_buf[1];
-            sense.asc = in_buf[2];
-            sense.ascq = in_buf[3];
-        }
     }
 
+    sense = scsi_parse_sense(in_buf, in_len);
     memset(buf, 0, len);
     if (fixed) {
         /* Return fixed format sense buffer */

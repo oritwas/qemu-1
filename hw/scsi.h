@@ -231,6 +231,7 @@ extern const struct SCSISense sense_code_WRITE_PROTECTED;
 
 #define SENSE_CODE(x) sense_code_ ## x
 
+SCSISense scsi_parse_sense(uint8_t *in_buf, int in_len);
 int scsi_sense_valid(SCSISense sense);
 int scsi_build_sense(uint8_t *in_buf, int in_len,
                      uint8_t *buf, int len, bool fixed);
