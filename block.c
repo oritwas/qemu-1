@@ -633,6 +633,7 @@ static int bdrv_open_common(BlockDriverState *bs, const char *filename,
 
     bs->open_flags = flags;
     bs->guest_block_size = 512;
+    bs->host_block_size = 512;
 
     assert(bs->copy_on_read == 0); /* bdrv_new() and bdrv_close() make it so */
     if ((flags & BDRV_O_RDWR) && (flags & BDRV_O_COPY_ON_READ)) {
@@ -657,6 +658,7 @@ static int bdrv_open_common(BlockDriverState *bs, const char *filename,
         ret = bdrv_file_open(&bs->file, filename, bs->open_flags);
         if (ret >= 0) {
             bs->open_flags = bs->file->open_flags;
+            bs->host_block_size = bs->file->host_block_size;
             ret = drv->bdrv_open(bs, bs->open_flags);
         }
     }
@@ -3899,7 +3901,7 @@ void bdrv_set_guest_block_size(BlockDriverState *bs, int align)
 
 void *qemu_blockalign(BlockDriverState *bs, size_t size)
 {
-    return qemu_memalign((bs && bs->guest_block_size) ? bs->guest_block_size : 512, size);
+    return qemu_memalign(bs ? bs->host_block_size : 512, size);
 }
 
 void bdrv_set_dirty_tracking(BlockDriverState *bs, int enable)

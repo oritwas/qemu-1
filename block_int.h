@@ -313,6 +313,9 @@ struct BlockDriverState {
     /* the memory alignment used by the guest for the buffers handled by this driver */
     int guest_block_size;
 
+    /* the memory alignment required by the device for the buffers handled by this driver */
+    int host_block_size;
+
     /* NOTE: the following infos are only hints for real hardware
        drivers. They are not used by the block driver */
     int cyls, heads, secs, translation;
