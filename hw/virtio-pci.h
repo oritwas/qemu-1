@@ -15,6 +15,7 @@
 #ifndef QEMU_VIRTIO_PCI_H
 #define QEMU_VIRTIO_PCI_H
 
+#include "virtio-blk.h"
 #include "virtio-net.h"
 #include "virtio-serial.h"
 #include "9pfs/virtio-9p-device.h"
@@ -33,7 +34,7 @@ typedef struct {
     uint32_t class_code;
     uint32_t nvectors;
     BlockConf block;
-    char *block_serial;
+    VirtIOBlkConf blk;
     uint32_t host_features;
 #ifdef CONFIG_VIRTFS
     V9fsConf fsconf;

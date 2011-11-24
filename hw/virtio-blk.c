@@ -29,7 +29,7 @@ typedef struct VirtIOBlock
     void *rq;
     QEMUBH *bh;
     BlockConf *conf;
-    char *serial;
+    VirtIOBlkConf *blk;
     unsigned short sector_mask;
     DeviceState *qdev;
 } VirtIOBlock;
@@ -392,7 +392,7 @@ static void virtio_blk_handle_request(VirtIOBlockReq *req,
          * terminated by '\0' only when shorter than buffer.
          */
         strncpy(req->elem.in_sg[0].iov_base,
-                s->serial ? s->serial : "",
+                s->blk->serial ? s->blk->serial : "",
                 MIN(req->elem.in_sg[0].iov_len, VIRTIO_BLK_ID_BYTES));
         virtio_blk_req_complete(req, VIRTIO_BLK_S_OK);
         g_free(req);
@@ -566,8 +566,7 @@ static const BlockDevOps virtio_block_ops = {
     .resize_cb = virtio_blk_resize,
 };
 
-VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf,
-                              char **serial)
+VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf, VirtIOBlkConf *blk)
 {
     VirtIOBlock *s;
     int cylinders, heads, secs;
@@ -583,11 +582,11 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf,
         return NULL;
     }
 
-    if (!*serial) {
+    if (!blk->serial) {
         /* try to fall back to value set with legacy -drive serial=... */
         dinfo = drive_get_by_blockdev(conf->bs);
         if (*dinfo->serial) {
-            *serial = strdup(dinfo->serial);
+            blk->serial = strdup(dinfo->serial);
         }
     }
 
@@ -600,7 +599,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf,
     s->vdev.reset = virtio_blk_reset;
     s->bs = conf->bs;
     s->conf = conf;
-    s->serial = *serial;
+    s->blk = blk;
     s->rq = NULL;
     s->sector_mask = (s->conf->logical_block_size / BDRV_SECTOR_SIZE) - 1;
     bdrv_guess_geometry(s->bs, &cylinders, &heads, &secs);

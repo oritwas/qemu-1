@@ -191,8 +191,9 @@ void virtio_bind_device(VirtIODevice *vdev, const VirtIOBindings *binding,
                         void *opaque);
 
 /* Base devices.  */
+typedef struct VirtIOBlkConf VirtIOBlkConf;
 VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf,
-                              char **serial);
+                              VirtIOBlkConf *blk);
 struct virtio_net_conf;
 VirtIODevice *virtio_net_init(DeviceState *dev, struct virtio_net_conf *net);
 typedef struct virtio_serial_conf virtio_serial_conf;

@@ -17,6 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "virtio-blk.h"
 #include "virtio-net.h"
 #include "virtio-serial.h"
 
@@ -47,7 +48,7 @@ typedef struct VirtIOS390Device {
     uint8_t feat_len;
     VirtIODevice *vdev;
     BlockConf block;
-    char *block_serial;
+    VirtIOBlkConf blk;
     uint32_t host_features;
     virtio_serial_conf serial;
     virtio_net_conf net;
