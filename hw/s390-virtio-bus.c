@@ -145,8 +145,7 @@ static int s390_virtio_blk_init(VirtIOS390Device *dev)
 {
     VirtIODevice *vdev;
 
-    vdev = virtio_blk_init((DeviceState *)dev, &dev->block,
-                           &dev->blk);
+    vdev = virtio_blk_init((DeviceState *)dev, &dev->blk);
     if (!vdev) {
         return -1;
     }
@@ -360,7 +359,6 @@ static VirtIOS390DeviceInfo s390_virtio_blk = {
     .qdev.alias = "virtio-blk",
     .qdev.size = sizeof(VirtIOS390Device),
     .qdev.props = (Property[]) {
-        DEFINE_BLOCK_PROPERTIES(VirtIOS390Device, block),
         DEFINE_VIRTIO_BLK_PROPERTIES(VirtIOS390Device, host_features, blk),
         DEFINE_PROP_END_OF_LIST(),
     },

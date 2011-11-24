@@ -99,6 +99,7 @@ struct virtio_scsi_inhdr
 
 struct VirtIOBlkConf
 {
+    BlockConf conf;
     char *serial;
 };
 
@@ -113,6 +114,7 @@ struct VirtIOBlkConf
 
 #define DEFINE_VIRTIO_BLK_PROPERTIES(_state, _features_field, _conf_field) \
         DEFINE_VIRTIO_BLK_FEATURES(_state, _features_field), \
+        DEFINE_BLOCK_PROPERTIES(_state, _conf_field.conf), \
         DEFINE_PROP_STRING("serial", _state, _conf_field.serial)
 
 #endif

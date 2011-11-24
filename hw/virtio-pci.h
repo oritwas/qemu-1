@@ -33,7 +33,6 @@ typedef struct {
     uint32_t flags;
     uint32_t class_code;
     uint32_t nvectors;
-    BlockConf block;
     VirtIOBlkConf blk;
     uint32_t host_features;
 #ifdef CONFIG_VIRTFS
