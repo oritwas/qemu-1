@@ -45,10 +45,10 @@ struct virtio_console_control {
     uint16_t value;		/* Extra information for the key */
 };
 
-struct virtio_serial_conf {
+typedef struct virtio_serial_conf {
     /* Max. number of ports we can have for a virtio-serial device */
     uint32_t max_virtserial_ports;
-};
+} virtio_serial_conf;
 
 /* Some events for the internal messages (control packets) */
 #define VIRTIO_CONSOLE_DEVICE_READY	0
@@ -165,6 +165,9 @@ struct VirtIOSerialPortInfo {
     ssize_t (*have_data)(VirtIOSerialPort *port, const uint8_t *buf,
                          size_t len);
 };
+
+VirtIODevice *virtio_serial_init(DeviceState *dev, virtio_serial_conf *serial);
+void virtio_serial_exit(VirtIODevice *vdev);
 
 /* Interface to the virtio-serial bus */
 
