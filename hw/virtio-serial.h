@@ -204,4 +204,9 @@ size_t virtio_serial_guest_ready(VirtIOSerialPort *port);
  */
 void virtio_serial_throttle_port(VirtIOSerialPort *port, bool throttle);
 
+#define DEFINE_VIRTIO_SERIAL_PROPERTIES(_state, _feature_field, _conf_field) \
+        DEFINE_VIRTIO_COMMON_FEATURES(_state, _feature_field), \
+        DEFINE_PROP_UINT32("max_ports", _state, \
+                           _conf_field.max_virtserial_ports, 31)
+
 #endif

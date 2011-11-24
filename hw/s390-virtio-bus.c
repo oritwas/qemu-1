@@ -372,8 +372,7 @@ static VirtIOS390DeviceInfo s390_virtio_serial = {
     .qdev.alias = "virtio-serial",
     .qdev.size = sizeof(VirtIOS390Device),
     .qdev.props = (Property[]) {
-        DEFINE_PROP_UINT32("max_ports", VirtIOS390Device,
-                           serial.max_virtserial_ports, 31),
+        DEFINE_VIRTIO_SERIAL_PROPERTIES(VirtIOS390Device, host_features, serial),
         DEFINE_PROP_END_OF_LIST(),
     },
 };
