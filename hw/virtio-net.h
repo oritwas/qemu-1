@@ -168,6 +168,9 @@ struct virtio_net_ctrl_mac {
  #define VIRTIO_NET_CTRL_VLAN_ADD             0
  #define VIRTIO_NET_CTRL_VLAN_DEL             1
 
+VirtIODevice *virtio_net_init(DeviceState *dev, struct virtio_net_conf *net);
+void virtio_net_exit(VirtIODevice *vdev);
+
 #define DEFINE_VIRTIO_NET_PROPERTIES(_state, _features_field, _conf_field) \
         DEFINE_NIC_PROPERTIES(_state, _conf_field.nic), \
         DEFINE_VIRTIO_COMMON_FEATURES(_state, _features_field), \

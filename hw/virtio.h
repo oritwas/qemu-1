@@ -193,8 +193,6 @@ void virtio_bind_device(VirtIODevice *vdev, const VirtIOBindings *binding,
 /* Base devices.  */
 typedef struct VirtIOBlkConf VirtIOBlkConf;
 VirtIODevice *virtio_blk_init(DeviceState *dev, VirtIOBlkConf *blk);
-struct virtio_net_conf;
-VirtIODevice *virtio_net_init(DeviceState *dev, struct virtio_net_conf *net);
 typedef struct virtio_serial_conf virtio_serial_conf;
 VirtIODevice *virtio_serial_init(DeviceState *dev, virtio_serial_conf *serial);
 VirtIODevice *virtio_balloon_init(DeviceState *dev);
@@ -203,7 +201,6 @@ VirtIODevice *virtio_9p_init(DeviceState *dev, V9fsConf *conf);
 #endif
 
 
-void virtio_net_exit(VirtIODevice *vdev);
 void virtio_blk_exit(VirtIODevice *vdev);
 void virtio_serial_exit(VirtIODevice *vdev);
 void virtio_balloon_exit(VirtIODevice *vdev);
