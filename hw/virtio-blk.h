@@ -110,4 +110,9 @@ struct VirtIOBlkConf
 #define DEFINE_VIRTIO_BLK_FEATURES(_state, _field) \
         DEFINE_VIRTIO_COMMON_FEATURES(_state, _field)
 #endif
+
+#define DEFINE_VIRTIO_BLK_PROPERTIES(_state, _features_field, _conf_field) \
+        DEFINE_VIRTIO_BLK_FEATURES(_state, _features_field), \
+        DEFINE_PROP_STRING("serial", _state, _conf_field.serial)
+
 #endif

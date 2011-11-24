@@ -361,7 +361,7 @@ static VirtIOS390DeviceInfo s390_virtio_blk = {
     .qdev.size = sizeof(VirtIOS390Device),
     .qdev.props = (Property[]) {
         DEFINE_BLOCK_PROPERTIES(VirtIOS390Device, block),
-        DEFINE_PROP_STRING("serial", VirtIOS390Device, blk.serial),
+        DEFINE_VIRTIO_BLK_PROPERTIES(VirtIOS390Device, host_features, blk),
         DEFINE_PROP_END_OF_LIST(),
     },
 };

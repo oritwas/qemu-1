@@ -811,11 +811,10 @@ static PCIDeviceInfo virtio_info[] = {
         .qdev.props = (Property[]) {
             DEFINE_PROP_HEX32("class", VirtIOPCIProxy, class_code, 0),
             DEFINE_BLOCK_PROPERTIES(VirtIOPCIProxy, block),
-            DEFINE_PROP_STRING("serial", VirtIOPCIProxy, blk.serial),
             DEFINE_PROP_BIT("ioeventfd", VirtIOPCIProxy, flags,
                             VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, true),
             DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
-            DEFINE_VIRTIO_BLK_FEATURES(VirtIOPCIProxy, host_features),
+            DEFINE_VIRTIO_BLK_PROPERTIES(VirtIOPCIProxy, host_features, blk),
             DEFINE_PROP_END_OF_LIST(),
         },
         .qdev.reset = virtio_pci_reset,
