@@ -47,10 +47,12 @@ typedef struct VirtIOS390Device {
     ram_addr_t feat_offs;
     uint8_t feat_len;
     VirtIODevice *vdev;
-    VirtIOBlkConf blk;
     uint32_t host_features;
-    virtio_serial_conf serial;
-    virtio_net_conf net;
+    union {
+        VirtIOBlkConf blk;
+        virtio_serial_conf serial;
+        virtio_net_conf net;
+    };
 } VirtIOS390Device;
 
 typedef struct VirtIOS390Bus {

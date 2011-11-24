@@ -33,13 +33,15 @@ typedef struct {
     uint32_t flags;
     uint32_t class_code;
     uint32_t nvectors;
-    VirtIOBlkConf blk;
     uint32_t host_features;
+    union {
+        VirtIOBlkConf blk;
 #ifdef CONFIG_VIRTFS
-    V9fsConf fsconf;
+        V9fsConf fsconf;
 #endif
-    virtio_serial_conf serial;
-    virtio_net_conf net;
+        virtio_serial_conf serial;
+        virtio_net_conf net;
+    };
     bool ioeventfd_disabled;
     bool ioeventfd_started;
 } VirtIOPCIProxy;
