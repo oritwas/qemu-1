@@ -21,6 +21,8 @@ typedef struct V9fsConf
     char *fsdev_id;
 } V9fsConf;
 
+VirtIODevice *virtio_9p_init(DeviceState *dev, V9fsConf *conf);
+
 #define DEFINE_VIRTIO_9P_PROPERTIES(_state, _features_field, _conf_field) \
     DEFINE_VIRTIO_COMMON_FEATURES(VirtIOPCIProxy, _features_field), \
     DEFINE_PROP_STRING("mount_tag", VirtIOPCIProxy, _conf_field.tag), \
