@@ -193,14 +193,12 @@ void virtio_bind_device(VirtIODevice *vdev, const VirtIOBindings *binding,
 /* Base devices.  */
 typedef struct VirtIOBlkConf VirtIOBlkConf;
 VirtIODevice *virtio_blk_init(DeviceState *dev, VirtIOBlkConf *blk);
-VirtIODevice *virtio_balloon_init(DeviceState *dev);
 #ifdef CONFIG_VIRTFS
 VirtIODevice *virtio_9p_init(DeviceState *dev, V9fsConf *conf);
 #endif
 
 
 void virtio_blk_exit(VirtIODevice *vdev);
-void virtio_balloon_exit(VirtIODevice *vdev);
 
 #define DEFINE_VIRTIO_COMMON_FEATURES(_state, _field) \
 	DEFINE_PROP_BIT("indirect_desc", _state, _field, \

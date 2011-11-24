@@ -52,4 +52,7 @@ typedef struct VirtIOBalloonStat {
     uint64_t val;
 } QEMU_PACKED VirtIOBalloonStat;
 
+VirtIODevice *virtio_balloon_init(DeviceState *dev);
+void virtio_balloon_exit(VirtIODevice *vdev);
+
 #endif
