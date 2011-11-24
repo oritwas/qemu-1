@@ -635,13 +635,19 @@ void virtio_init_pci(VirtIOPCIProxy *proxy, VirtIODevice *vdev)
     config[PCI_INTERRUPT_PIN] = 1;
 
     memory_region_init(&proxy->msix_bar, "virtio-msix", 4096);
-    if (vdev->nvectors && !msix_init(&proxy->pci_dev, vdev->nvectors,
+    if (proxy->nvectors == DEV_NVECTORS_UNSPECIFIED) {
+        proxy->nvectors = vdev->get_nvectors ? vdev->get_nvectors(vdev) : 0;
+    }
+
+    if (proxy->nvectors && !msix_init(&proxy->pci_dev, proxy->nvectors,
                                      &proxy->msix_bar, 1, 0)) {
         pci_register_bar(&proxy->pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY,
                          &proxy->msix_bar);
-    } else
-        vdev->nvectors = 0;
+    } else {
+        proxy->nvectors = 0;
+    }
 
+    vdev->nvectors = proxy->nvectors;
     proxy->pci_dev.config_write = virtio_write_config;
 
     size = VIRTIO_PCI_REGION_SIZE(&proxy->pci_dev) + vdev->config_len;
@@ -676,10 +682,7 @@ static int virtio_blk_init_pci(PCIDevice *pci_dev)
     if (!vdev) {
         return -1;
     }
-    vdev->nvectors = proxy->nvectors;
     virtio_init_pci(proxy, vdev);
-    /* make the actual value visible */
-    proxy->nvectors = vdev->nvectors;
     return 0;
 }
 
@@ -717,11 +720,7 @@ static int virtio_serial_init_pci(PCIDevice *pci_dev)
     if (!vdev) {
         return -1;
     }
-    vdev->nvectors = proxy->nvectors == DEV_NVECTORS_UNSPECIFIED
-                                        ? proxy->serial.max_virtserial_ports + 1
-                                        : proxy->nvectors;
     virtio_init_pci(proxy, vdev);
-    proxy->nvectors = vdev->nvectors;
     return 0;
 }
 
@@ -741,11 +740,7 @@ static int virtio_net_init_pci(PCIDevice *pci_dev)
 
     vdev = virtio_net_init(&pci_dev->qdev, &proxy->net);
 
-    vdev->nvectors = proxy->nvectors;
     virtio_init_pci(proxy, vdev);
-
-    /* make the actual value visible */
-    proxy->nvectors = vdev->nvectors;
     return 0;
 }
 
@@ -787,10 +782,7 @@ static int virtio_9p_init_pci(PCIDevice *pci_dev)
     VirtIODevice *vdev;
 
     vdev = virtio_9p_init(&pci_dev->qdev, &proxy->fsconf);
-    vdev->nvectors = proxy->nvectors;
     virtio_init_pci(proxy, vdev);
-    /* make the actual value visible */
-    proxy->nvectors = vdev->nvectors;
     return 0;
 }
 #endif
@@ -810,7 +802,8 @@ static PCIDeviceInfo virtio_info[] = {
             DEFINE_PROP_HEX32("class", VirtIOPCIProxy, class_code, 0),
             DEFINE_PROP_BIT("ioeventfd", VirtIOPCIProxy, flags,
                             VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, true),
-            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
+            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors,
+                               DEV_NVECTORS_UNSPECIFIED),
             DEFINE_VIRTIO_BLK_PROPERTIES(VirtIOPCIProxy, host_features, blk),
             DEFINE_PROP_END_OF_LIST(),
         },
@@ -829,7 +822,8 @@ static PCIDeviceInfo virtio_info[] = {
         .qdev.props = (Property[]) {
             DEFINE_PROP_BIT("ioeventfd", VirtIOPCIProxy, flags,
                             VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, false),
-            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 3),
+            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors,
+                               DEV_NVECTORS_UNSPECIFIED),
             DEFINE_VIRTIO_NET_PROPERTIES(VirtIOPCIProxy, host_features, net),
             DEFINE_PROP_END_OF_LIST(),
         },
@@ -881,7 +875,8 @@ static PCIDeviceInfo virtio_info[] = {
         .qdev.props = (Property[]) {
             DEFINE_PROP_BIT("ioeventfd", VirtIOPCIProxy, flags,
                             VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, true),
-            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
+            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors,
+                               DEV_NVECTORS_UNSPECIFIED),
             DEFINE_VIRTIO_9P_PROPERTIES(VirtIOPCIProxy, host_features, fsconf),
             DEFINE_PROP_END_OF_LIST(),
         },

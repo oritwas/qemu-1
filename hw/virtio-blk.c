@@ -555,6 +555,11 @@ static int virtio_blk_load(QEMUFile *f, void *opaque, int version_id)
     return 0;
 }
 
+static int virtio_blk_get_nvectors(VirtIODevice *vdev)
+{
+    return 2;
+}
+
 static void virtio_blk_resize(void *opaque)
 {
     VirtIOBlock *s = opaque;
@@ -596,6 +601,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, VirtIOBlkConf *blk)
 
     s->vdev.get_config = virtio_blk_update_config;
     s->vdev.get_features = virtio_blk_get_features;
+    s->vdev.get_nvectors = virtio_blk_get_nvectors;
     s->vdev.reset = virtio_blk_reset;
     s->bs = blk->conf.bs;
     s->conf = &blk->conf;

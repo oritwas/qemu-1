@@ -26,6 +26,11 @@ static uint32_t virtio_9p_get_features(VirtIODevice *vdev, uint32_t features)
     return features;
 }
 
+static int virtio_9p_get_nvectors(VirtIODevice *vdev)
+{
+    return 2;
+}
+
 static V9fsState *to_virtio_9p(VirtIODevice *vdev)
 {
     return (V9fsState *)vdev;
@@ -112,6 +117,7 @@ VirtIODevice *virtio_9p_init(DeviceState *dev, V9fsConf *conf)
 
     s->ops = fse->ops;
     s->vdev.get_features = virtio_9p_get_features;
+    s->vdev.get_nvectors = virtio_9p_get_nvectors;
     s->config_size = sizeof(struct virtio_9p_config) + len;
     s->vdev.get_config = virtio_9p_get_config;
     s->fid_list = NULL;

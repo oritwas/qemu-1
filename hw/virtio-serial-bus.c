@@ -528,6 +528,13 @@ static void set_config(VirtIODevice *vdev, const uint8_t *config_data)
     memcpy(&config, config_data, sizeof(config));
 }
 
+static int get_nvectors(VirtIODevice *vdev)
+{
+    VirtIOSerial *vser = DO_UPCAST(VirtIOSerial, vdev, vdev);
+
+    return vser->bus.max_nr_ports + 1;
+}
+
 static void virtio_serial_save(QEMUFile *f, void *opaque)
 {
     VirtIOSerial *s = opaque;
@@ -913,6 +920,7 @@ VirtIODevice *virtio_serial_init(DeviceState *dev, virtio_serial_conf *conf)
     mark_port_added(vser, 0);
 
     vser->vdev.get_features = get_features;
+    vser->vdev.get_nvectors = get_nvectors;
     vser->vdev.get_config = get_config;
     vser->vdev.set_config = set_config;
 

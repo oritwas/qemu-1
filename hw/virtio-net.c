@@ -976,6 +976,11 @@ static int virtio_net_load(QEMUFile *f, void *opaque, int version_id)
     return 0;
 }
 
+static int virtio_net_get_nvectors(VirtIODevice *vdev)
+{
+    return 2;
+}
+
 static void virtio_net_cleanup(VLANClientState *nc)
 {
     VirtIONet *n = DO_UPCAST(NICState, nc, nc)->opaque;
@@ -1005,6 +1010,7 @@ VirtIODevice *virtio_net_init(DeviceState *dev, virtio_net_conf *net)
     n->vdev.get_features = virtio_net_get_features;
     n->vdev.set_features = virtio_net_set_features;
     n->vdev.bad_features = virtio_net_bad_features;
+    n->vdev.get_nvectors = virtio_net_get_nvectors;
     n->vdev.reset = virtio_net_reset;
     n->vdev.set_status = virtio_net_set_status;
     n->rx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_rx);
