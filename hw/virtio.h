@@ -21,7 +21,7 @@
 #include "block.h"
 #include "event_notifier.h"
 #ifdef CONFIG_VIRTFS
-#include "9p.h"
+#include "9pfs/virtio-9p-device.h"
 #endif
 
 /* from Linux's linux/virtio_config.h */

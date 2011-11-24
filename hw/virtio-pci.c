@@ -268,7 +268,7 @@ static void virtio_pci_stop_ioeventfd(VirtIOPCIProxy *proxy)
     proxy->ioeventfd_started = false;
 }
 
-void virtio_pci_reset(DeviceState *d)
+static void virtio_pci_reset(DeviceState *d)
 {
     VirtIOPCIProxy *proxy = container_of(d, VirtIOPCIProxy, pci_dev.qdev);
     virtio_pci_stop_ioeventfd(proxy);
@@ -782,6 +782,21 @@ static int virtio_balloon_exit_pci(PCIDevice *pci_dev)
     return virtio_exit_pci(pci_dev);
 }
 
+#ifdef CONFIG_VIRTFS
+static int virtio_9p_init_pci(PCIDevice *pci_dev)
+{
+    VirtIOPCIProxy *proxy = DO_UPCAST(VirtIOPCIProxy, pci_dev, pci_dev);
+    VirtIODevice *vdev;
+
+    vdev = virtio_9p_init(&pci_dev->qdev, &proxy->fsconf);
+    vdev->nvectors = proxy->nvectors;
+    virtio_init_pci(proxy, vdev);
+    /* make the actual value visible */
+    proxy->nvectors = vdev->nvectors;
+    return 0;
+}
+#endif
+
 static PCIDeviceInfo virtio_info[] = {
     {
         .qdev.name = "virtio-blk-pci",
@@ -858,6 +873,26 @@ static PCIDeviceInfo virtio_info[] = {
             DEFINE_PROP_END_OF_LIST(),
         },
         .qdev.reset = virtio_pci_reset,
+#ifdef CONFIG_VIRTFS
+    }, {
+        .qdev.name = "virtio-9p-pci",
+        .qdev.size = sizeof(VirtIOPCIProxy),
+        .init      = virtio_9p_init_pci,
+        .vendor_id = PCI_VENDOR_ID_REDHAT_QUMRANET,
+        .device_id = 0x1009,
+        .revision  = VIRTIO_PCI_ABI_VERSION,
+        .class_id  = 0x2,
+        .qdev.props = (Property[]) {
+            DEFINE_PROP_BIT("ioeventfd", VirtIOPCIProxy, flags,
+                            VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, true),
+            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
+            DEFINE_VIRTIO_COMMON_FEATURES(VirtIOPCIProxy, host_features),
+            DEFINE_PROP_STRING("mount_tag", VirtIOPCIProxy, fsconf.tag),
+            DEFINE_PROP_STRING("fsdev", VirtIOPCIProxy, fsconf.fsdev_id),
+            DEFINE_PROP_END_OF_LIST(),
+        },
+        .qdev.reset = virtio_pci_reset,
+#endif
     },{
         /* end of list */
     }
