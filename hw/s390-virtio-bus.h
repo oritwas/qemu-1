@@ -48,7 +48,6 @@ typedef struct VirtIOS390Device {
     VirtIODevice *vdev;
     BlockConf block;
     char *block_serial;
-    NICConf nic;
     uint32_t host_features;
     virtio_serial_conf serial;
     virtio_net_conf net;

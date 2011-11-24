@@ -58,6 +58,7 @@
 
 typedef struct virtio_net_conf
 {
+    NICConf nic;
     uint32_t txtimer;
     int32_t txburst;
     char *tx;
@@ -168,6 +169,7 @@ struct virtio_net_ctrl_mac {
  #define VIRTIO_NET_CTRL_VLAN_DEL             1
 
 #define DEFINE_VIRTIO_NET_PROPERTIES(_state, _features_field, _conf_field) \
+        DEFINE_NIC_PROPERTIES(_state, _conf_field.nic), \
         DEFINE_VIRTIO_COMMON_FEATURES(_state, _features_field), \
         DEFINE_PROP_BIT("csum", _state, _features_field, VIRTIO_NET_F_CSUM, true), \
         DEFINE_PROP_BIT("guest_csum", _state, _features_field, VIRTIO_NET_F_GUEST_CSUM, true), \

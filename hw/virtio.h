@@ -194,8 +194,7 @@ void virtio_bind_device(VirtIODevice *vdev, const VirtIOBindings *binding,
 VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf,
                               char **serial);
 struct virtio_net_conf;
-VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
-                              struct virtio_net_conf *net);
+VirtIODevice *virtio_net_init(DeviceState *dev, struct virtio_net_conf *net);
 typedef struct virtio_serial_conf virtio_serial_conf;
 VirtIODevice *virtio_serial_init(DeviceState *dev, virtio_serial_conf *serial);
 VirtIODevice *virtio_balloon_init(DeviceState *dev);

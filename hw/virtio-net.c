@@ -992,8 +992,7 @@ static NetClientInfo net_virtio_info = {
     .link_status_changed = virtio_net_set_link_status,
 };
 
-VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
-                              virtio_net_conf *net)
+VirtIODevice *virtio_net_init(DeviceState *dev, virtio_net_conf *net)
 {
     VirtIONet *n;
 
@@ -1026,13 +1025,13 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
         n->tx_bh = qemu_bh_new(virtio_net_tx_bh, n);
     }
     n->ctrl_vq = virtio_add_queue(&n->vdev, 64, virtio_net_handle_ctrl);
-    qemu_macaddr_default_if_unset(&conf->macaddr);
-    memcpy(&n->mac[0], &conf->macaddr, sizeof(n->mac));
+    qemu_macaddr_default_if_unset(&net->nic.macaddr);
+    memcpy(&n->mac[0], &net->nic.macaddr, sizeof(n->mac));
     n->status = VIRTIO_NET_S_LINK_UP;
 
-    n->nic = qemu_new_nic(&net_virtio_info, conf, dev->info->name, dev->id, n);
+    n->nic = qemu_new_nic(&net_virtio_info, &net->nic, dev->info->name, dev->id, n);
 
-    qemu_format_nic_info_str(&n->nic->nc, conf->macaddr.a);
+    qemu_format_nic_info_str(&n->nic->nc, net->nic.macaddr.a);
 
     n->tx_waiting = 0;
     n->tx_burst = net->txburst;
@@ -1047,7 +1046,7 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
     register_savevm(dev, "virtio-net", -1, VIRTIO_NET_VM_VERSION,
                     virtio_net_save, virtio_net_load, n);
 
-    add_boot_device_path(conf->bootindex, dev, "/ethernet-phy@0");
+    add_boot_device_path(net->nic.bootindex, dev, "/ethernet-phy@0");
 
     return &n->vdev;
 }
