@@ -167,23 +167,26 @@ struct virtio_net_ctrl_mac {
  #define VIRTIO_NET_CTRL_VLAN_ADD             0
  #define VIRTIO_NET_CTRL_VLAN_DEL             1
 
-#define DEFINE_VIRTIO_NET_FEATURES(_state, _field) \
-        DEFINE_VIRTIO_COMMON_FEATURES(_state, _field), \
-        DEFINE_PROP_BIT("csum", _state, _field, VIRTIO_NET_F_CSUM, true), \
-        DEFINE_PROP_BIT("guest_csum", _state, _field, VIRTIO_NET_F_GUEST_CSUM, true), \
-        DEFINE_PROP_BIT("gso", _state, _field, VIRTIO_NET_F_GSO, true), \
-        DEFINE_PROP_BIT("guest_tso4", _state, _field, VIRTIO_NET_F_GUEST_TSO4, true), \
-        DEFINE_PROP_BIT("guest_tso6", _state, _field, VIRTIO_NET_F_GUEST_TSO6, true), \
-        DEFINE_PROP_BIT("guest_ecn", _state, _field, VIRTIO_NET_F_GUEST_ECN, true), \
-        DEFINE_PROP_BIT("guest_ufo", _state, _field, VIRTIO_NET_F_GUEST_UFO, true), \
-        DEFINE_PROP_BIT("host_tso4", _state, _field, VIRTIO_NET_F_HOST_TSO4, true), \
-        DEFINE_PROP_BIT("host_tso6", _state, _field, VIRTIO_NET_F_HOST_TSO6, true), \
-        DEFINE_PROP_BIT("host_ecn", _state, _field, VIRTIO_NET_F_HOST_ECN, true), \
-        DEFINE_PROP_BIT("host_ufo", _state, _field, VIRTIO_NET_F_HOST_UFO, true), \
-        DEFINE_PROP_BIT("mrg_rxbuf", _state, _field, VIRTIO_NET_F_MRG_RXBUF, true), \
-        DEFINE_PROP_BIT("status", _state, _field, VIRTIO_NET_F_STATUS, true), \
-        DEFINE_PROP_BIT("ctrl_vq", _state, _field, VIRTIO_NET_F_CTRL_VQ, true), \
-        DEFINE_PROP_BIT("ctrl_rx", _state, _field, VIRTIO_NET_F_CTRL_RX, true), \
-        DEFINE_PROP_BIT("ctrl_vlan", _state, _field, VIRTIO_NET_F_CTRL_VLAN, true), \
-        DEFINE_PROP_BIT("ctrl_rx_extra", _state, _field, VIRTIO_NET_F_CTRL_RX_EXTRA, true)
+#define DEFINE_VIRTIO_NET_PROPERTIES(_state, _features_field, _conf_field) \
+        DEFINE_VIRTIO_COMMON_FEATURES(_state, _features_field), \
+        DEFINE_PROP_BIT("csum", _state, _features_field, VIRTIO_NET_F_CSUM, true), \
+        DEFINE_PROP_BIT("guest_csum", _state, _features_field, VIRTIO_NET_F_GUEST_CSUM, true), \
+        DEFINE_PROP_BIT("gso", _state, _features_field, VIRTIO_NET_F_GSO, true), \
+        DEFINE_PROP_BIT("guest_tso4", _state, _features_field, VIRTIO_NET_F_GUEST_TSO4, true), \
+        DEFINE_PROP_BIT("guest_tso6", _state, _features_field, VIRTIO_NET_F_GUEST_TSO6, true), \
+        DEFINE_PROP_BIT("guest_ecn", _state, _features_field, VIRTIO_NET_F_GUEST_ECN, true), \
+        DEFINE_PROP_BIT("guest_ufo", _state, _features_field, VIRTIO_NET_F_GUEST_UFO, true), \
+        DEFINE_PROP_BIT("host_tso4", _state, _features_field, VIRTIO_NET_F_HOST_TSO4, true), \
+        DEFINE_PROP_BIT("host_tso6", _state, _features_field, VIRTIO_NET_F_HOST_TSO6, true), \
+        DEFINE_PROP_BIT("host_ecn", _state, _features_field, VIRTIO_NET_F_HOST_ECN, true), \
+        DEFINE_PROP_BIT("host_ufo", _state, _features_field, VIRTIO_NET_F_HOST_UFO, true), \
+        DEFINE_PROP_BIT("mrg_rxbuf", _state, _features_field, VIRTIO_NET_F_MRG_RXBUF, true), \
+        DEFINE_PROP_BIT("status", _state, _features_field, VIRTIO_NET_F_STATUS, true), \
+        DEFINE_PROP_BIT("ctrl_vq", _state, _features_field, VIRTIO_NET_F_CTRL_VQ, true), \
+        DEFINE_PROP_BIT("ctrl_rx", _state, _features_field, VIRTIO_NET_F_CTRL_RX, true), \
+        DEFINE_PROP_BIT("ctrl_vlan", _state, _features_field, VIRTIO_NET_F_CTRL_VLAN, true), \
+        DEFINE_PROP_BIT("ctrl_rx_extra", _state, _features_field, VIRTIO_NET_F_CTRL_RX_EXTRA, true), \
+        DEFINE_PROP_UINT32("x-txtimer", _state, _conf_field.txtimer, TX_TIMER_INTERVAL), \
+        DEFINE_PROP_INT32("x-txburst", _state, _conf_field.txburst, TX_BURST), \
+        DEFINE_PROP_STRING("tx", _state, _conf_field.tx)
 #endif
