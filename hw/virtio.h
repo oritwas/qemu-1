@@ -187,13 +187,6 @@ int virtio_set_features(VirtIODevice *vdev, uint32_t val);
 void virtio_bind_device(VirtIODevice *vdev, const VirtIOBindings *binding,
                         void *opaque);
 
-/* Base devices.  */
-typedef struct VirtIOBlkConf VirtIOBlkConf;
-VirtIODevice *virtio_blk_init(DeviceState *dev, VirtIOBlkConf *blk);
-
-
-void virtio_blk_exit(VirtIODevice *vdev);
-
 #define DEFINE_VIRTIO_COMMON_FEATURES(_state, _field) \
 	DEFINE_PROP_BIT("indirect_desc", _state, _field, \
 			VIRTIO_RING_F_INDIRECT_DESC, true), \

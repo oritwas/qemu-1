@@ -97,11 +97,14 @@ struct virtio_scsi_inhdr
     uint32_t residual;
 };
 
-struct VirtIOBlkConf
+typedef struct VirtIOBlkConf
 {
     BlockConf conf;
     char *serial;
-};
+} VirtIOBlkConf;
+
+VirtIODevice *virtio_blk_init(DeviceState *dev, VirtIOBlkConf *blk);
+void virtio_blk_exit(VirtIODevice *vdev);
 
 #ifdef __linux__
 #define DEFINE_VIRTIO_BLK_FEATURES(_state, _field) \
