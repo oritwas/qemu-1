@@ -21,4 +21,9 @@ typedef struct V9fsConf
     char *fsdev_id;
 } V9fsConf;
 
+#define DEFINE_VIRTIO_9P_PROPERTIES(_state, _features_field, _conf_field) \
+    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOPCIProxy, _features_field), \
+    DEFINE_PROP_STRING("mount_tag", VirtIOPCIProxy, _conf_field.tag), \
+    DEFINE_PROP_STRING("fsdev", VirtIOPCIProxy, _conf_field.fsdev_id)
+
 #endif
