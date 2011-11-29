@@ -310,8 +310,8 @@ struct BlockDriverState {
     uint64_t total_time_ns[BDRV_MAX_IOTYPE];
     uint64_t wr_highest_sector;
 
-    /* the memory alignment required for the buffers handled by this driver */
-    int buffer_alignment;
+    /* the memory alignment used by the guest for the buffers handled by this driver */
+    int guest_block_size;
 
     /* NOTE: the following infos are only hints for real hardware
        drivers. They are not used by the block driver */
