@@ -1422,7 +1422,7 @@ static bool tracked_request_overlaps(BdrvTrackedRequest *req,
 }
 
 static void coroutine_fn wait_for_overlapping_requests(BlockDriverState *bs,
-        int64_t sector_num, int nb_sectors)
+        int64_t sector_num, int nb_sectors, bool writes_only)
 {
     BdrvTrackedRequest *req;
     int64_t cluster_sector_num;
@@ -1438,9 +1438,16 @@ static void coroutine_fn wait_for_overlapping_requests(BlockDriverState *bs,
     round_to_clusters(bs, sector_num, nb_sectors,
                       &cluster_sector_num, &cluster_nb_sectors);
 
+    if (writes_only && !(bs->open_flags & BDRV_O_RDWR)) {
+        return;
+    }
+
     do {
         retry = false;
         QLIST_FOREACH(req, &bs->tracked_requests, list) {
+            if (writes_only && !req->is_write) {
+                continue;
+            }
             if (tracked_request_overlaps(req, cluster_sector_num,
                                          cluster_nb_sectors)) {
                 /* Hitting this means there was a reentrant request, for
@@ -1848,7 +1855,7 @@ static int coroutine_fn bdrv_co_do_readv(BlockDriverState *bs,
     }
 
     if (bs->copy_on_read_in_flight) {
-        wait_for_overlapping_requests(bs, sector_num, nb_sectors);
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors, false);
     }
 
     tracked_request_begin(&req, bs, sector_num, nb_sectors, false);
@@ -1954,7 +1961,7 @@ static int coroutine_fn bdrv_co_do_writev(BlockDriverState *bs,
     }
 
     if (bs->copy_on_read_in_flight) {
-        wait_for_overlapping_requests(bs, sector_num, nb_sectors);
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors, false);
     }
 
     tracked_request_begin(&req, bs, sector_num, nb_sectors, true);
