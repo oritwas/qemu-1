@@ -887,6 +887,7 @@ static int iscsi_open(BlockDriverState *bs, const char *filename, int flags)
     if (iscsi_url != NULL) {
         iscsi_destroy_url(iscsi_url);
     }
+    bs->host_block_size = iscsilun->block_size;
     return 0;
 
 failed:
