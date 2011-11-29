@@ -52,6 +52,7 @@
 #include <sys/param.h>
 #include <linux/cdrom.h>
 #include <linux/fd.h>
+#include <linux/fs.h>
 #endif
 #if defined (__FreeBSD__) || defined(__FreeBSD_kernel__)
 #include <sys/disk.h>
@@ -179,6 +180,58 @@ static int raw_normalize_devicepath(const char **filename)
 }
 #endif
 
+static void raw_probe_alignment(BlockDriverState *bs)
+{
+    BDRVRawState *s = bs->opaque;
+    char *buf;
+    unsigned int sector_size;
+
+    /* For /dev/sg devices the alignment is not really used.  */
+    if (bs->sg) {
+        return;
+    }
+
+    /* For block devices, try to get the actual sector size even if we
+     * do not need it, so that it can be passed down to the guest.
+     */
+#ifdef BLKSSZGET
+    if (ioctl(s->fd, BLKSSZGET, &sector_size) >= 0) {
+        bs->host_block_size = sector_size;
+    }
+#endif
+#ifdef DKIOCGETBLOCKSIZE
+    if (ioctl(s->fd, DKIOCGETBLOCKSIZE, &sector_size) >= 0) {
+        bs->host_block_size = sector_size;
+    }
+#endif
+#ifdef DIOCGSECTORSIZE
+    if (ioctl(s->fd, DIOCGSECTORSIZE, &sector_size) >= 0) {
+        bs->host_block_size = sector_size;
+    }
+#endif
+
+    /* If we could not get the size so far, we can only guess it if the file
+     * was opened with O_DIRECT.  Using the minimal value (512) is okay.
+     * It may or may not be safe if the guest logical block size is >512;
+     * however, we will print a scary message suggesting usage of cache=none.
+     * If they hear our advice, the host block size will be detected correctly
+     * and the scary message will go away.
+     */
+    if (!(bs->open_flags & BDRV_O_NOCACHE)) {
+        return;
+    }
+
+    buf = qemu_memalign(MAX_BLOCKSIZE, MAX_BLOCKSIZE);
+    for (sector_size = 512; sector_size < MAX_BLOCKSIZE; sector_size <<= 1) {
+        /* The buffer must be aligned to sector_size, but not sector_size*2.  */
+        if (pread(s->fd, buf + sector_size, sector_size, 0) >= 0) {
+            break;
+        }
+    }
+    bs->host_block_size = sector_size;
+    qemu_vfree(buf);
+}
+
 static int raw_open_common(BlockDriverState *bs, const char *filename,
                            int bdrv_flags, int open_flags)
 {
@@ -214,6 +267,7 @@ static int raw_open_common(BlockDriverState *bs, const char *filename,
         return ret;
     }
     s->fd = fd;
+    raw_probe_alignment(bs);
 
     /* We're falling back to POSIX AIO in some cases so init always */
     if (paio_init() < 0) {
@@ -262,22 +316,6 @@ static int raw_open(BlockDriverState *bs, const char *filename, int flags)
     return raw_open_common(bs, filename, flags, 0);
 }
 
-/* XXX: use host sector size if necessary with:
-#ifdef DIOCGSECTORSIZE
-        {
-            unsigned int sectorsize = 512;
-            if (!ioctl(fd, DIOCGSECTORSIZE, &sectorsize) &&
-                sectorsize > bufsize)
-                bufsize = sectorsize;
-        }
-#endif
-#ifdef CONFIG_COCOA
-        uint32_t blockSize = 512;
-        if ( !ioctl( fd, DKIOCGETBLOCKSIZE, &blockSize ) && blockSize > bufsize) {
-            bufsize = blockSize;
-        }
-#endif
-*/
 
 /*
  * Check if all memory in this vector is sector aligned.
@@ -287,7 +325,7 @@ static int qiov_is_aligned(BlockDriverState *bs, QEMUIOVector *qiov)
     int i;
 
     for (i = 0; i < qiov->niov; i++) {
-        if ((uintptr_t) qiov->iov[i].iov_base % bs->guest_block_size) {
+        if ((uintptr_t) qiov->iov[i].iov_base % bs->host_block_size) {
             return 0;
         }
     }

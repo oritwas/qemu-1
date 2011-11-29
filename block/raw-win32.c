@@ -77,6 +77,35 @@ static int set_sparse(int fd)
 				 NULL, 0, NULL, 0, &returned, NULL);
 }
 
+static void raw_probe_alignment(BlockDriverState *bs)
+{
+    BDRVRawState *s = bs->opaque;
+    DWORD sectorsPerCluster, freeClusters, totalClusters, count;
+    DISK_GEOMETRY_EX dg;
+    BOOL status;
+
+    if (s->type == FTYPE_CD) {
+        bs->host_block_size = 2048;
+        return;
+    }
+    if (s->type == FTYPE_HARDDISK) {
+        status = DeviceIoControl(s->hfile, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+                                 NULL, 0, &dg, sizeof(dg), &count, NULL);
+        if (status != 0) {
+            bs->host_block_size = dg.Geometry.BytesPerSector;
+            return;
+        }
+        /* try GetDiskFreeSpace too */
+    }
+
+    if (s->drive_path[0]) {
+        GetDiskFreeSpace(s->drive_path, &sectorsPerCluster,
+                         &dg.Geometry.BytesPerSector,
+                         &freeClusters, &totalClusters);
+        bs->host_block_size = dg.Geometry.BytesPerSector;
+    }
+}
+
 static int raw_open(BlockDriverState *bs, const char *filename, int flags)
 {
     BDRVRawState *s = bs->opaque;
@@ -96,6 +125,18 @@ static int raw_open(BlockDriverState *bs, const char *filename, int flags)
         overlapped |= FILE_FLAG_NO_BUFFERING;
     if (!(flags & BDRV_O_CACHE_WB))
         overlapped |= FILE_FLAG_WRITE_THROUGH;
+
+    if (filename[0] && filename[1] == ':') {
+        snprintf(s->drive_path, sizeof(s->drive_path), "%c:\\", filename[0]);
+    } else if (filename[0] == '\\' && filename[1] == '\\') {
+        s->drive_path[0] = 0;
+    } else {
+        /* Relative path.  */
+        char buf[MAX_PATH];
+        GetCurrentDirectory(MAX_PATH, buf);
+        snprintf(s->drive_path, sizeof(s->drive_path), "%c:\\", buf[0]);
+    }
+
     s->hfile = CreateFile(filename, access_flags,
                           FILE_SHARE_READ, NULL,
                           OPEN_EXISTING, overlapped, NULL);
@@ -106,6 +147,7 @@ static int raw_open(BlockDriverState *bs, const char *filename, int flags)
             return -EACCES;
         return -1;
     }
+    raw_probe_alignment(bs);
     return 0;
 }
 
