@@ -2790,7 +2790,7 @@ int bdrv_can_snapshot(BlockDriverState *bs)
 
 int bdrv_is_snapshot(BlockDriverState *bs)
 {
-    return !!(bs->open_flags & BDRV_O_SNAPSHOT);
+    return bs->is_temporary;
 }
 
 BlockDriverState *bdrv_snapshots(void)
