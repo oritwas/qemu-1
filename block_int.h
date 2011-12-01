@@ -263,14 +263,17 @@ struct BlockDriver {
 struct BlockDriverState {
     int64_t total_sectors; /* if we are reading a disk image, give its
                               size in sectors */
-    int read_only; /* if true, the media is read only */
-    int keep_read_only; /* if true, the media was requested to stay read only */
     int open_flags; /* flags used to open the file, re-used for re-open */
-    int encrypted; /* if true, the media is encrypted */
-    int valid_key; /* if true, a valid encryption key has been set */
-    int sg;        /* if true, the device is a /dev/sg* */
     int copy_on_read; /* if true, copy read backing sectors into image
                          note this is a reference count */
+
+    unsigned read_only:1; /* if true, the media is read only */
+    unsigned keep_read_only:1; /* if true, the media was requested to stay read only */
+    unsigned encrypted:1; /* if true, the media is encrypted */
+    unsigned valid_key:1; /* if true, a valid encryption key has been set */
+    unsigned sg:1;        /* if true, the device is a /dev/sg* */
+    unsigned growable:1;  /* if true, the disk can expand beyond total_sectors */
+    unsigned is_temporary:1;   /* if true, the disk was created from a snapshot */
 
     BlockDriver *drv; /* NULL means no media */
     void *opaque;
@@ -284,7 +287,6 @@ struct BlockDriverState {
     char backing_file[1024]; /* if non zero, the image is a diff of
                                 this file image */
     char backing_format[16]; /* if non-zero and backing_file exists */
-    int is_temporary;
 
     BlockDriverState *backing_hd;
     BlockDriverState *file;
@@ -307,9 +309,6 @@ struct BlockDriverState {
     uint64_t nr_ops[BDRV_MAX_IOTYPE];
     uint64_t total_time_ns[BDRV_MAX_IOTYPE];
     uint64_t wr_highest_sector;
-
-    /* Whether the disk can expand beyond total_sectors */
-    int growable;
 
     /* the memory alignment required for the buffers handled by this driver */
     int buffer_alignment;
