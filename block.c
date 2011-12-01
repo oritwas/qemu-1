@@ -28,6 +28,7 @@
 #include "block_int.h"
 #include "module.h"
 #include "qjson.h"
+#include "iov.h"
 #include "qemu-coroutine.h"
 #include "qmp-commands.h"
 #include "qemu-timer.h"
@@ -1406,6 +1407,21 @@ static void round_sectors(int64_t alignment,
     }
 }
 
+static bool req_is_aligned(int64_t alignment,
+                           int64_t sector_num, int nb_sectors)
+{
+    if (alignment != BDRV_SECTOR_SIZE) {
+        int64_t c = alignment / BDRV_SECTOR_SIZE;
+        if ((sector_num & (c - 1)) != 0) {
+            return false;
+        }
+        if ((nb_sectors & (c - 1)) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static int64_t get_cluster_size(BlockDriverState *bs)
 {
     BlockDriverInfo bdi;
@@ -1835,6 +1851,135 @@ err:
     return ret;
 }
 
+static int coroutine_fn bdrv_rw_co_align(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors, QEMUIOVector *qiov, bool is_write)
+{
+    BlockDriver *drv = bs->drv;
+    QEMUIOVector aligned_qiov;
+
+    int alignment = bs->host_block_size / BDRV_SECTOR_SIZE;
+    int64_t io_sector_num;
+    int io_nb_sectors;
+    int head_extra, tail_sectors;
+    int head_sectors = 0;
+    int tail_offset = 0;
+    int ret;
+    uint8_t *head = NULL;
+    uint8_t *tail = NULL;
+
+    trace_bdrv_rw_co_align(bs, sector_num, nb_sectors, is_write);
+    round_sectors(bs->host_block_size, sector_num, nb_sectors,
+                  &io_sector_num, &io_nb_sectors);
+
+    /*
+     * Here is a drawing of some involved quantities.  Double lines
+     * mark points that are aligned to a host block.
+     *
+     *                           io_sector_num + io_nb_sectors ---.
+     *     .-- io_sector_num                                       \
+     *    /                         sector_num + nb_sectors ---.    \
+     *   /______________ ________________  _____  ______________\____\
+     *  ||              |                ||     ||              |     ||
+     *  ||  head_extra  |  head_sectors  || ... || tail_sectors | ... ||
+     *  ||______________|________________||_____||______________|_____||
+     *                   \                \       \
+     *                    `--- sector_num  \       `--- sector_num + tail_offset
+     *                                      \
+     *                                       `--- io_sector_num + alignment
+     */
+    head_extra = sector_num & (alignment - 1);
+    tail_sectors = (sector_num + nb_sectors) & (alignment - 1);
+
+    qemu_iovec_init(&aligned_qiov, qiov->niov + 2);
+
+    /* If the initial sector is not aligned, we need a "head" block.  If a
+     * single block will satisfy the request, we put it in the "head" too.
+     * This way, the tail always starts on an aligned sector.
+     */
+    if (head_extra != 0 || io_nb_sectors == alignment) {
+        head_sectors = MIN(nb_sectors, alignment - head_extra);
+        head = qemu_blockalign(bs, bs->host_block_size);
+        qemu_iovec_add(&aligned_qiov, head, bs->host_block_size);
+    }
+
+    /* If the aligned request is just 1 block, we will read it in head,
+     * so nothing else to do.
+     */
+    if (io_nb_sectors > alignment) {
+        /* Otherwise, see where the last full block ends...  */
+        tail_offset = nb_sectors - tail_sectors;
+        assert(((sector_num + tail_offset) & (alignment - 1)) == 0);
+
+        /* ... add everything after the head and up to it.  */
+        qemu_iovec_copy(&aligned_qiov, qiov,
+                        head_sectors * BDRV_SECTOR_SIZE,
+                        (tail_offset - head_sectors) * BDRV_SECTOR_SIZE);
+
+        /* If the final sector is not aligned, add an extra block at
+         * the end.
+         */
+        if (tail_sectors != 0) {
+            tail = qemu_blockalign(bs, bs->host_block_size);
+            qemu_iovec_add(&aligned_qiov, tail, bs->host_block_size);
+        }
+    }
+
+    assert(head || tail);
+    if (is_write) {
+        QEMUIOVector rmw_qiov;
+        struct iovec rmw_iov;
+
+        /* Merge the user data with data read from the first block...  */
+        if (head != NULL) {
+            rmw_iov.iov_base = head;
+            rmw_iov.iov_len = bs->host_block_size;
+            qemu_iovec_init_external(&rmw_qiov, &rmw_iov, 1);
+            ret = drv->bdrv_co_readv(bs, io_sector_num, alignment, &rmw_qiov);
+            if (ret < 0) {
+                return ret;
+            }
+            iov_to_buf(qiov->iov, qiov->size,
+                       (head + head_extra * BDRV_SECTOR_SIZE), 0,
+                       head_sectors * BDRV_SECTOR_SIZE);
+        }
+
+        /* ... and from the last block.  The two reads could be merged if they
+         * access consecutive blocks, but it is rare and we do not care.  */
+        if (tail != NULL) {
+            rmw_iov.iov_base = tail;
+            rmw_iov.iov_len = bs->host_block_size;
+            qemu_iovec_init_external(&rmw_qiov, &rmw_iov, 1);
+            ret = drv->bdrv_co_readv(bs, sector_num + tail_offset, alignment, &rmw_qiov);
+            if (ret < 0) {
+                return ret;
+            }
+            iov_to_buf(qiov->iov, qiov->size,
+                       tail, tail_offset * BDRV_SECTOR_SIZE,
+                       tail_sectors * BDRV_SECTOR_SIZE);
+        }
+        ret = drv->bdrv_co_writev(bs, io_sector_num, io_nb_sectors, &aligned_qiov);
+    } else {
+        ret = drv->bdrv_co_readv(bs, io_sector_num, io_nb_sectors, &aligned_qiov);
+        /* Copy the misaligned parts that the user wants.  */
+        if (head != NULL) {
+            iov_from_buf(qiov->iov, qiov->size,
+                         (head + head_extra * BDRV_SECTOR_SIZE), 0,
+                         head_sectors * BDRV_SECTOR_SIZE);
+        }
+        if (tail != NULL) {
+            iov_from_buf(qiov->iov, qiov->size,
+                         tail, tail_offset * BDRV_SECTOR_SIZE,
+                         tail_sectors * BDRV_SECTOR_SIZE);
+        }
+    }
+
+    qemu_iovec_destroy(&aligned_qiov);
+    g_free(head);
+    g_free(tail);
+    return ret;
+}
+
+
 /*
  * Handle a read request in coroutine context
  */
@@ -1896,7 +2041,12 @@ static int coroutine_fn bdrv_co_do_readv(BlockDriverState *bs,
         }
     }
 
-    ret = drv->bdrv_co_readv(bs, sector_num, nb_sectors, qiov);
+    if ((bs->open_flags & BDRV_O_NOCACHE) &&
+        !req_is_aligned(bs->host_block_size, sector_num, nb_sectors)) {
+        ret = bdrv_rw_co_align(bs, sector_num, nb_sectors, qiov, false);
+    } else {
+        ret = drv->bdrv_co_readv(bs, sector_num, nb_sectors, qiov);
+    }
 
 out:
     tracked_request_end(&req);
@@ -1987,9 +2137,23 @@ static int coroutine_fn bdrv_co_do_writev(BlockDriverState *bs,
                                       get_cluster_size(bs), false);
     }
 
+    /* When the guest sees a lower alignment than the host, and O_DIRECT
+     * is in place, assume that the write will become a read-modify-write
+     * sequence.  These have to be serialized against each other, so that
+     * they look atomic to the guest.
+     */
+    if ((bs->open_flags & BDRV_O_NOCACHE) &&
+        bs->guest_block_size < bs->host_block_size) {
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors,
+                                      bs->host_block_size, true);
+    }
+
     tracked_request_begin(&req, bs, sector_num, nb_sectors, true);
 
-    if (flags & BDRV_REQ_ZERO_WRITE) {
+    if ((bs->open_flags & BDRV_O_NOCACHE) &&
+        !req_is_aligned(bs->host_block_size, sector_num, nb_sectors)) {
+        ret = bdrv_rw_co_align(bs, sector_num, nb_sectors, qiov, true);
+    } else if (flags & BDRV_REQ_ZERO_WRITE) {
         ret = bdrv_co_do_write_zeroes(bs, sector_num, nb_sectors);
     } else {
         ret = drv->bdrv_co_writev(bs, sector_num, nb_sectors, qiov);
@@ -3927,6 +4091,12 @@ BlockDriverAIOCB *bdrv_aio_ioctl(BlockDriverState *bs,
 void bdrv_set_guest_block_size(BlockDriverState *bs, int align)
 {
     bs->guest_block_size = align;
+    if ((bs->open_flags & BDRV_O_NOCACHE) &&
+        bs->guest_block_size < bs->host_block_size) {
+        error_report("Host block size is %d, guest block size is %d.  Direct\n"
+                     "access to the host device may cause performance degradation.",
+                     bs->host_block_size, bs->guest_block_size);
+    }
     if ((bs->open_flags & BDRV_O_RDWR) &&
         bs->host_block_size < bs->guest_block_size) {
         error_report("Host block size is %d, guest block size is %d.  Due to partially\n"
