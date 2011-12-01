@@ -648,7 +648,6 @@ static int bdrv_open_common(BlockDriverState *bs, const char *filename,
     bs->drv = drv;
     bs->opaque = g_malloc0(drv->instance_size);
 
-    bs->enable_write_cache = !!(flags & BDRV_O_CACHE_WB);
     bs->keep_read_only = bs->read_only = !(bs->open_flags & BDRV_O_RDWR);
 
     /* Open the image, either directly or using a protocol */
@@ -2355,7 +2354,7 @@ int bdrv_is_sg(BlockDriverState *bs)
 
 int bdrv_enable_write_cache(BlockDriverState *bs)
 {
-    return bs->enable_write_cache;
+    return !!(bs->open_flags & BDRV_O_CACHE_WB);
 }
 
 int bdrv_is_encrypted(BlockDriverState *bs)
