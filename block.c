@@ -4382,6 +4382,23 @@ out:
     return ret;
 }
 
+unsigned int get_physical_block_exp(BlockConf *conf)
+{
+    unsigned int exp = 0, size;
+
+    if (conf->physical_block_size) {
+        size = conf->physical_block_size;
+    } else {
+        size = conf->bs->host_block_size;
+    }
+
+    for (; size > conf->logical_block_size; size >>= 1) {
+        exp++;
+    }
+
+    return exp;
+}
+
 void *block_job_create(const BlockJobType *job_type, BlockDriverState *bs,
                        int64_t speed, BlockDriverCompletionFunc *cb,
                        void *opaque, Error **errp)
