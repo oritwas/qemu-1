@@ -1663,7 +1663,7 @@ static const cmdinfo_t close_cmd = {
     .oneline    = "close the current open file",
 };
 
-static int openfile(char *name, int flags, int growable)
+static int openfile(char *name, int flags, int growable, int blocksize)
 {
     if (bs) {
         fprintf(stderr, "file open already, try 'help close'\n");
@@ -1684,6 +1684,17 @@ static int openfile(char *name, int flags, int growable)
             bs = NULL;
             return 1;
         }
+        if (blocksize) {
+            if (blocksize < bs->host_block_size && (flags & BDRV_O_NOCACHE)) {
+                fprintf(stderr, "%s: block size cannot be smaller than the actual size\n", progname);
+            } else {
+                if (blocksize > 512) {
+                    /* Always go through the RMW logic.  */
+                    bs->open_flags |= BDRV_O_NOCACHE;
+                }
+                bs->host_block_size = blocksize;
+            }
+        }
     }
 
     return 0;
@@ -1702,7 +1713,8 @@ static void open_help(void)
 " -r, -- open file read-only\n"
 " -s, -- use snapshot file\n"
 " -n, -- disable host cache\n"
-" -g, -- allow file to grow (only applies to protocols)"
+" -g, -- allow file to grow (only applies to protocols)\n"
+" -bSIZE, -- behave as if the host block size was SIZE\n"
 "\n");
 }
 
@@ -1725,9 +1737,11 @@ static int open_f(int argc, char **argv)
     int flags = 0;
     int readonly = 0;
     int growable = 0;
+    long blocksize = 0;
+    char *endptr = NULL;
     int c;
 
-    while ((c = getopt(argc, argv, "snrg")) != EOF) {
+    while ((c = getopt(argc, argv, "snrgb:")) != EOF) {
         switch (c) {
         case 's':
             flags |= BDRV_O_SNAPSHOT;
@@ -1740,6 +1754,15 @@ static int open_f(int argc, char **argv)
             break;
         case 'g':
             growable = 1;
+            break;
+        case 'b':
+            blocksize = strtol(optarg, &endptr, 0);
+            if (blocksize < 512 || blocksize > 65536 ||
+                (blocksize & (blocksize - 1)) || *endptr != '\0') {
+                printf("The block size must be a power of two "
+                       "between 512 and 65536.\n");
+                return -1;
+            }
             break;
         default:
             return command_usage(&open_cmd);
@@ -1754,7 +1777,7 @@ static int open_f(int argc, char **argv)
         return command_usage(&open_cmd);
     }
 
-    return openfile(argv[optind], flags, growable);
+    return openfile(argv[optind], flags, growable, blocksize);
 }
 
 static int init_args_command(int index)
@@ -1911,7 +1934,7 @@ int main(int argc, char **argv)
     }
 
     if ((argc - optind) == 1) {
-        openfile(argv[optind], flags, growable);
+        openfile(argv[optind], flags, growable, 0);
     }
     command_loop();
 
