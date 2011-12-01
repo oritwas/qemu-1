@@ -1390,21 +1390,30 @@ static void tracked_request_begin(BdrvTrackedRequest *req,
 /**
  * Round a region to cluster boundaries
  */
-static void round_to_clusters(BlockDriverState *bs,
-                              int64_t sector_num, int nb_sectors,
-                              int64_t *cluster_sector_num,
-                              int *cluster_nb_sectors)
+static void round_sectors(int64_t alignment,
+                          int64_t sector_num, int nb_sectors,
+                          int64_t *cluster_sector_num,
+                          int *cluster_nb_sectors)
+{
+    if (alignment == BDRV_SECTOR_SIZE) {
+        *cluster_sector_num = sector_num;
+        *cluster_nb_sectors = nb_sectors;
+    } else {
+        int64_t c = alignment / BDRV_SECTOR_SIZE;
+        *cluster_sector_num = QEMU_ALIGN_DOWN(sector_num, c);
+        *cluster_nb_sectors = QEMU_ALIGN_UP(sector_num - *cluster_sector_num +
+                                            nb_sectors, c);
+    }
+}
+
+static int64_t get_cluster_size(BlockDriverState *bs)
 {
     BlockDriverInfo bdi;
 
     if (bdrv_get_info(bs, &bdi) < 0 || bdi.cluster_size == 0) {
-        *cluster_sector_num = sector_num;
-        *cluster_nb_sectors = nb_sectors;
+        return BDRV_SECTOR_SIZE;
     } else {
-        int64_t c = bdi.cluster_size / BDRV_SECTOR_SIZE;
-        *cluster_sector_num = QEMU_ALIGN_DOWN(sector_num, c);
-        *cluster_nb_sectors = QEMU_ALIGN_UP(sector_num - *cluster_sector_num +
-                                            nb_sectors, c);
+        return bdi.cluster_size / BDRV_SECTOR_SIZE;
     }
 }
 
@@ -1422,7 +1431,8 @@ static bool tracked_request_overlaps(BdrvTrackedRequest *req,
 }
 
 static void coroutine_fn wait_for_overlapping_requests(BlockDriverState *bs,
-        int64_t sector_num, int nb_sectors, bool writes_only)
+        int64_t sector_num, int nb_sectors,
+        int64_t granularity, bool writes_only)
 {
     BdrvTrackedRequest *req;
     int64_t cluster_sector_num;
@@ -1435,8 +1445,8 @@ static void coroutine_fn wait_for_overlapping_requests(BlockDriverState *bs,
      * CoR read and write operations are atomic and guest writes cannot
      * interleave between them.
      */
-    round_to_clusters(bs, sector_num, nb_sectors,
-                      &cluster_sector_num, &cluster_nb_sectors);
+    round_sectors(granularity, sector_num, nb_sectors,
+                  &cluster_sector_num, &cluster_nb_sectors);
 
     if (writes_only && !(bs->open_flags & BDRV_O_RDWR)) {
         return;
@@ -1782,8 +1792,9 @@ static int coroutine_fn bdrv_co_do_copy_on_readv(BlockDriverState *bs,
     /* Cover entire cluster so no additional backing file I/O is required when
      * allocating cluster in the image file.
      */
-    round_to_clusters(bs, sector_num, nb_sectors,
-                      &cluster_sector_num, &cluster_nb_sectors);
+    round_sectors(get_cluster_size(bs),
+                  sector_num, nb_sectors,
+                  &cluster_sector_num, &cluster_nb_sectors);
 
     trace_bdrv_co_do_copy_on_readv(bs, sector_num, nb_sectors,
                                    cluster_sector_num, cluster_nb_sectors);
@@ -1855,7 +1866,8 @@ static int coroutine_fn bdrv_co_do_readv(BlockDriverState *bs,
     }
 
     if (bs->copy_on_read_in_flight) {
-        wait_for_overlapping_requests(bs, sector_num, nb_sectors, false);
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors,
+                                      get_cluster_size(bs), false);
     }
 
     tracked_request_begin(&req, bs, sector_num, nb_sectors, false);
@@ -1961,7 +1973,8 @@ static int coroutine_fn bdrv_co_do_writev(BlockDriverState *bs,
     }
 
     if (bs->copy_on_read_in_flight) {
-        wait_for_overlapping_requests(bs, sector_num, nb_sectors, false);
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors,
+                                      get_cluster_size(bs), false);
     }
 
     tracked_request_begin(&req, bs, sector_num, nb_sectors, true);
