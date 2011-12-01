@@ -418,6 +418,7 @@ static int vdi_open(BlockDriverState *bs, int flags)
         goto fail;
     }
 
+    bs->open_flags |= BDRV_O_NOCACHE;
     bs->total_sectors = header.disk_size / SECTOR_SIZE;
 
     s->block_size = header.block_size;

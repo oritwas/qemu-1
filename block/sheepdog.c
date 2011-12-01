@@ -1140,6 +1140,7 @@ static int sd_open(BlockDriverState *bs, const char *filename, int flags)
     s->min_dirty_data_idx = UINT32_MAX;
     s->max_dirty_data_idx = 0;
 
+    bs->open_flags |= BDRV_O_NOCACHE;
     bs->total_sectors = s->inode.vdi_size / SECTOR_SIZE;
     strncpy(s->name, vdi, sizeof(s->name));
     qemu_co_mutex_init(&s->lock);

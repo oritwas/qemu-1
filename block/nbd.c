@@ -328,6 +328,7 @@ static int nbd_open(BlockDriverState *bs, const char* filename, int flags)
      */
     result = nbd_establish_connection(bs);
 
+    bs->open_flags |= BDRV_O_NOCACHE;
     return result;
 }
 

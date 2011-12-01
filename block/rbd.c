@@ -508,6 +508,7 @@ static int qemu_rbd_open(BlockDriverState *bs, const char *filename, int flags)
     }
 
     bs->read_only = (s->snap != NULL);
+    bs->open_flags |= BDRV_O_NOCACHE;
 
     s->event_reader_pos = 0;
     r = qemu_pipe(s->fds);

@@ -407,6 +407,7 @@ static int curl_open(BlockDriverState *bs, const char *filename, int flags)
     curl_multi_setopt( s->multi, CURLMOPT_SOCKETFUNCTION, curl_sock_cb ); 
     curl_multi_do(s);
 
+    bs->open_flags |= BDRV_O_NOCACHE;
     return 0;
 
 out:
