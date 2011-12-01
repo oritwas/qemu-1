@@ -657,6 +657,7 @@ static int bdrv_open_common(BlockDriverState *bs, const char *filename,
     } else {
         ret = bdrv_file_open(&bs->file, filename, bs->open_flags);
         if (ret >= 0) {
+            bs->open_flags = bs->file->open_flags;
             ret = drv->bdrv_open(bs, bs->open_flags);
         }
     }
