@@ -1870,6 +1870,16 @@ static int coroutine_fn bdrv_co_do_readv(BlockDriverState *bs,
                                       get_cluster_size(bs), false);
     }
 
+    /* When the guest sees a higher alignment than the host, writes may be
+     * done in multiple steps.  So, reads have to be serialized against
+     * overlapping writes, so that the writes look atomic to the guest,
+     * even when O_DIRECT is not in use.
+     */
+    if (bs->guest_block_size > bs->host_block_size) {
+        wait_for_overlapping_requests(bs, sector_num, nb_sectors,
+                                      bs->guest_block_size, true);
+    }
+
     tracked_request_begin(&req, bs, sector_num, nb_sectors, false);
 
     if (flags & BDRV_REQ_COPY_ON_READ) {
@@ -3917,6 +3927,18 @@ BlockDriverAIOCB *bdrv_aio_ioctl(BlockDriverState *bs,
 void bdrv_set_guest_block_size(BlockDriverState *bs, int align)
 {
     bs->guest_block_size = align;
+    if ((bs->open_flags & BDRV_O_RDWR) &&
+        bs->host_block_size < bs->guest_block_size) {
+        error_report("Host block size is %d, guest block size is %d.  Due to partially\n"
+                     "written sectors, power failures may cause data corruption.%s",
+                     bs->host_block_size, bs->guest_block_size,
+
+                     /* The host block size might not be detected correctly if
+                      * the guest is not using O_DIRECT.  */
+                     (bs->open_flags & BDRV_O_NOCACHE) ? "" : "\n"
+                     "If you think this message is wrong, start the guest with cache=none\n"
+                     "and see if it disappears.");
+    }
 }
 
 void *qemu_blockalign(BlockDriverState *bs, size_t size)
