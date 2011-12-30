@@ -73,7 +73,6 @@ iscsi_aio_cancel(BlockDriverAIOCB *blockacb)
     IscsiAIOCB *acb = (IscsiAIOCB *)blockacb;
     IscsiLun *iscsilun = acb->iscsilun;
 
-    acb->common.cb(acb->common.opaque, -ECANCELED);
     acb->canceled = 1;
 
     /* send a task mgmt call to the target to cancel the task on the target */
