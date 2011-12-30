@@ -3214,7 +3214,12 @@ typedef struct BlockDriverAIOCBCoroutine {
 
 static void bdrv_aio_co_cancel_em(BlockDriverAIOCB *blockacb)
 {
-    qemu_aio_flush();
+    BlockDriverAIOCBCoroutine *acb =
+         container_of(blockacb, BlockDriverAIOCBCoroutine, common);
+
+    while (acb->co) {
+        qemu_aio_wait();
+    }
 }
 
 static AIOPool bdrv_em_co_aio_pool = {
