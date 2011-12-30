@@ -3210,6 +3210,7 @@ typedef struct BlockDriverAIOCBCoroutine {
     bool is_write;
     Coroutine *co;
     QEMUBH* bh;
+    Notifier n;
 } BlockDriverAIOCBCoroutine;
 
 static void bdrv_aio_co_cancel_em(BlockDriverAIOCB *blockacb)
@@ -3217,8 +3218,8 @@ static void bdrv_aio_co_cancel_em(BlockDriverAIOCB *blockacb)
     BlockDriverAIOCBCoroutine *acb =
          container_of(blockacb, BlockDriverAIOCBCoroutine, common);
 
-    while (acb->co) {
-        qemu_aio_wait();
+    if (acb->co) {
+        qemu_coroutine_cancel(acb->co);
     }
 }
 
@@ -3231,6 +3232,7 @@ static void bdrv_co_em_bh(void *opaque)
 {
     BlockDriverAIOCBCoroutine *acb = opaque;
 
+    qemu_coroutine_remove_cancel_notifier(&acb->n);
     acb->common.cb(acb->common.opaque, acb->req.error);
     qemu_bh_delete(acb->bh);
     qemu_aio_release(acb);
@@ -3255,6 +3257,15 @@ static void coroutine_fn bdrv_co_do_rw(void *opaque)
     qemu_bh_schedule(acb->bh);
 }
 
+static void bdrv_co_aio_wait(Notifier *notifier, void *data)
+{
+    BlockDriverAIOCBCoroutine *acb =
+        container_of(notifier, BlockDriverAIOCBCoroutine, n);
+    while (acb->co) {
+        qemu_aio_wait();
+    }
+}
+
 static BlockDriverAIOCBCoroutine *qemu_co_aio_get(CoroutineEntry *entry,
                                                   BlockDriverState *bs,
                                                   BlockDriverCompletionFunc *cb,
@@ -3264,6 +3275,8 @@ static BlockDriverAIOCBCoroutine *qemu_co_aio_get(CoroutineEntry *entry,
 
     acb = qemu_aio_get(&bdrv_em_co_aio_pool, bs, cb, opaque);
     acb->co = qemu_coroutine_create(entry);
+    acb->n.notify = bdrv_co_aio_wait;
+    qemu_coroutine_add_cancel_notifier(acb->co, &acb->n);
     return acb;
 }
 
