@@ -21,6 +21,8 @@ Coroutine *qemu_coroutine_create(CoroutineEntry *entry)
 {
     Coroutine *co = qemu_coroutine_new();
     co->entry = entry;
+    co->canceled = false;
+    notifier_list_init(&co->cancel_notifiers);
     return co;
 }
 
@@ -40,6 +42,32 @@ static void coroutine_swap(Coroutine *from, Coroutine *to)
     default:
         abort();
     }
+}
+
+bool qemu_coroutine_canceled(void)
+{
+    Coroutine *self = qemu_coroutine_self();
+
+    return self->canceled;
+}
+
+void qemu_coroutine_cancel(Coroutine *co)
+{
+    if (co->canceled) {
+        return;
+    }
+    co->canceled = true;
+    notifier_list_notify(&co->cancel_notifiers, co);
+}
+
+void qemu_coroutine_add_cancel_notifier(Coroutine *co, Notifier *n)
+{
+    notifier_list_add(&co->cancel_notifiers, n);
+}
+
+void qemu_coroutine_remove_cancel_notifier(Notifier *n)
+{
+    notifier_remove(n);
 }
 
 void qemu_coroutine_enter(Coroutine *co, void *opaque)

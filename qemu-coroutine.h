@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include "qemu-queue.h"
 #include "qemu-timer.h"
+#include "notify.h"
 
 /**
  * Coroutines are a mechanism for stack switching and can be used for
@@ -80,6 +81,11 @@ void qemu_coroutine_enter(Coroutine *coroutine, void *opaque);
  * qemu_coroutine_enter().
  */
 void coroutine_fn qemu_coroutine_yield(void);
+
+bool qemu_coroutine_canceled(void);
+void qemu_coroutine_cancel(Coroutine *co);
+void qemu_coroutine_add_cancel_notifier(Coroutine *co, Notifier *notify);
+void qemu_coroutine_remove_cancel_notifier(Notifier *notify);
 
 /**
  * Get the currently executing coroutine

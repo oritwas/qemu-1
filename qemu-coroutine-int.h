@@ -27,6 +27,7 @@
 
 #include "qemu-queue.h"
 #include "qemu-coroutine.h"
+#include "notify.h"
 
 typedef enum {
     COROUTINE_YIELD = 1,
@@ -39,6 +40,8 @@ struct Coroutine {
     Coroutine *caller;
     QSLIST_ENTRY(Coroutine) pool_next;
     QTAILQ_ENTRY(Coroutine) co_queue_next;
+    NotifierList cancel_notifiers;
+    bool canceled;
 };
 
 Coroutine *qemu_coroutine_new(void);
