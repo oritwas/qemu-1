@@ -56,7 +56,7 @@ typedef struct BdrvTrackedRequest BdrvTrackedRequest;
 typedef struct AIOPool {
     void (*cancel)(BlockDriverAIOCB *acb);
     int aiocb_size;
-    BlockDriverAIOCB *free_aiocb;
+    QSLIST_HEAD(, BlockDriverAIOCB) *free_aiocb;
 } AIOPool;
 
 typedef struct BlockIOLimit {
@@ -312,7 +312,7 @@ struct BlockDriverAIOCB {
     BlockDriverState *bs;
     BlockDriverCompletionFunc *cb;
     void *opaque;
-    BlockDriverAIOCB *next;
+    QSLIST_ENTRY(BlockDriverAIOCB) next;
 };
 
 void get_tmp_filename(char *filename, int size);
