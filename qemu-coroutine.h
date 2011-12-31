@@ -65,6 +65,7 @@ typedef void coroutine_fn CoroutineEntry(void *opaque);
  * Use qemu_coroutine_enter() to actually transfer control to the coroutine.
  */
 Coroutine *qemu_coroutine_create(CoroutineEntry *entry);
+Coroutine *qemu_coroutine_create_no_cancel(CoroutineEntry *entry);
 
 /**
  * Transfer control to a coroutine
@@ -83,6 +84,7 @@ void qemu_coroutine_enter(Coroutine *coroutine, void *opaque);
 void coroutine_fn qemu_coroutine_yield(void);
 
 bool qemu_coroutine_canceled(void);
+void qemu_coroutine_set_cancelable(bool cancelable);
 void qemu_coroutine_cancel(Coroutine *co);
 void qemu_coroutine_add_cancel_notifier(Coroutine *co, Notifier *notify);
 void qemu_coroutine_remove_cancel_notifier(Notifier *notify);

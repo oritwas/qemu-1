@@ -41,6 +41,7 @@ struct Coroutine {
     QSLIST_ENTRY(Coroutine) pool_next;
     QTAILQ_ENTRY(Coroutine) co_queue_next;
     NotifierList cancel_notifiers;
+    short cancelable;
     bool canceled;
 };
 

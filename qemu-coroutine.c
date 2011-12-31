@@ -22,7 +22,15 @@ Coroutine *qemu_coroutine_create(CoroutineEntry *entry)
     Coroutine *co = qemu_coroutine_new();
     co->entry = entry;
     co->canceled = false;
+    co->cancelable = 1;
     notifier_list_init(&co->cancel_notifiers);
+    return co;
+}
+
+Coroutine *qemu_coroutine_create_no_cancel(CoroutineEntry *entry)
+{
+    Coroutine *co = qemu_coroutine_create(entry);
+    co->cancelable = 0;
     return co;
 }
 
@@ -48,7 +56,18 @@ bool qemu_coroutine_canceled(void)
 {
     Coroutine *self = qemu_coroutine_self();
 
-    return self->canceled;
+    return self->cancelable > 0 && self->canceled;
+}
+
+void qemu_coroutine_set_cancelable(bool cancelable)
+{
+    Coroutine *self = qemu_coroutine_self();
+
+    assert (!(cancelable && self->cancelable > 0));
+    self->cancelable += cancelable ? 1 : -1;
+    if (self->canceled && self->cancelable > 0) {
+        notifier_list_notify(&self->cancel_notifiers, self);
+    }
 }
 
 void qemu_coroutine_cancel(Coroutine *co)
