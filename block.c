@@ -3391,13 +3391,22 @@ static void bdrv_co_io_em_complete(void *opaque, int ret)
     qemu_coroutine_enter(co->coroutine, NULL);
 }
 
+static int bdrv_co_yield(CoroutineIOCompletion *co, BlockDriverAIOCB *acb)
+{
+    if (!acb) {
+        return -EIO;
+    } else {
+        co->coroutine = qemu_coroutine_self();
+        qemu_coroutine_yield();
+        return co->ret;
+    }
+}
+
 static int coroutine_fn bdrv_co_io_em(BlockDriverState *bs, int64_t sector_num,
                                       int nb_sectors, QEMUIOVector *iov,
                                       bool is_write)
 {
-    CoroutineIOCompletion co = {
-        .coroutine = qemu_coroutine_self(),
-    };
+    CoroutineIOCompletion co;
     BlockDriverAIOCB *acb;
 
     if (is_write) {
@@ -3409,12 +3418,7 @@ static int coroutine_fn bdrv_co_io_em(BlockDriverState *bs, int64_t sector_num,
     }
 
     trace_bdrv_co_io_em(bs, sector_num, nb_sectors, is_write, acb);
-    if (!acb) {
-        return -EIO;
-    }
-    qemu_coroutine_yield();
-
-    return co.ret;
+    return bdrv_co_yield(&co, acb);
 }
 
 static int coroutine_fn bdrv_co_readv_em(BlockDriverState *bs,
@@ -3463,17 +3467,10 @@ int coroutine_fn bdrv_co_flush(BlockDriverState *bs)
         return bs->drv->bdrv_co_flush_to_disk(bs);
     } else if (bs->drv->bdrv_aio_flush) {
         BlockDriverAIOCB *acb;
-        CoroutineIOCompletion co = {
-            .coroutine = qemu_coroutine_self(),
-        };
+        CoroutineIOCompletion co;
 
         acb = bs->drv->bdrv_aio_flush(bs, bdrv_co_io_em_complete, &co);
-        if (acb == NULL) {
-            return -EIO;
-        } else {
-            qemu_coroutine_yield();
-            return co.ret;
-        }
+	return bdrv_co_yield(&co, acb);
     } else {
         /*
          * Some block drivers always operate in either writethrough or unsafe
@@ -3548,18 +3545,11 @@ int coroutine_fn bdrv_co_discard(BlockDriverState *bs, int64_t sector_num,
         return bs->drv->bdrv_co_discard(bs, sector_num, nb_sectors);
     } else if (bs->drv->bdrv_aio_discard) {
         BlockDriverAIOCB *acb;
-        CoroutineIOCompletion co = {
-            .coroutine = qemu_coroutine_self(),
-        };
+        CoroutineIOCompletion co;
 
         acb = bs->drv->bdrv_aio_discard(bs, sector_num, nb_sectors,
                                         bdrv_co_io_em_complete, &co);
-        if (acb == NULL) {
-            return -EIO;
-        } else {
-            qemu_coroutine_yield();
-            return co.ret;
-        }
+        return bdrv_co_yield(&co, acb);
     } else {
         return 0;
     }
