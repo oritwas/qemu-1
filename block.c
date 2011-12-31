@@ -3233,7 +3233,9 @@ static void bdrv_co_em_bh(void *opaque)
     BlockDriverAIOCBCoroutine *acb = opaque;
 
     qemu_coroutine_remove_cancel_notifier(&acb->n);
-    acb->common.cb(acb->common.opaque, acb->req.error);
+    if (acb->req.error != -ECANCELED) {
+        acb->common.cb(acb->common.opaque, acb->req.error);
+    }
     qemu_bh_delete(acb->bh);
     qemu_aio_release(acb);
 }
