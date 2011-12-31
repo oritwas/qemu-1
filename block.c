@@ -3393,13 +3393,28 @@ void qemu_aio_release(void *p)
 
 typedef struct CoroutineIOCompletion {
     Coroutine *coroutine;
+    BlockDriverAIOCB *acb;
+    Notifier n;
     int ret;
 } CoroutineIOCompletion;
+
+static void bdrv_co_io_em_cancel(Notifier *notifier, void *opaque)
+{
+    CoroutineIOCompletion *co =
+	    container_of(notifier, CoroutineIOCompletion, n);
+
+    if (co->acb) {
+        BlockDriverAIOCB *acb = co->acb;
+        co->acb = NULL;
+        bdrv_aio_cancel(acb);
+    }
+}
 
 static void bdrv_co_io_em_complete(void *opaque, int ret)
 {
     CoroutineIOCompletion *co = opaque;
 
+    co->acb = NULL;
     co->ret = ret;
     qemu_coroutine_enter(co->coroutine, NULL);
 }
@@ -3410,7 +3425,11 @@ static int bdrv_co_yield(CoroutineIOCompletion *co, BlockDriverAIOCB *acb)
         return -EIO;
     } else {
         co->coroutine = qemu_coroutine_self();
+        co->acb = acb;
+        co->n.notify = bdrv_co_io_em_cancel;
+        qemu_coroutine_add_cancel_notifier(co->coroutine, &co->n);
         qemu_coroutine_yield();
+        qemu_coroutine_remove_cancel_notifier(&co->n);
         return co->ret;
     }
 }
