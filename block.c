@@ -315,6 +315,11 @@ BlockDriver *bdrv_find_format(const char *format_name)
     return NULL;
 }
 
+static int bdrv_is_protocol(BlockDriverState *bs)
+{
+    return !bs->drv || bs->drv->bdrv_file_open;
+}
+
 static int bdrv_is_whitelisted(BlockDriver *drv)
 {
     static const char *whitelist[] = {
@@ -3246,7 +3251,9 @@ static void coroutine_fn bdrv_co_do_rw(void *opaque)
     BlockDriverAIOCBCoroutine *acb = opaque;
     BlockDriverState *bs = acb->common.bs;
 
-    if (!acb->is_write) {
+    if (!bdrv_is_protocol(bs) && qemu_coroutine_canceled()) {
+        acb->req.error = ECANCELED;
+    } else if (!acb->is_write) {
         acb->req.error = bdrv_co_do_readv(bs, acb->req.sector,
             acb->req.nb_sectors, acb->req.qiov, 0);
     } else {
@@ -3308,7 +3315,11 @@ static void coroutine_fn bdrv_aio_flush_co_entry(void *opaque)
     BlockDriverAIOCBCoroutine *acb = opaque;
     BlockDriverState *bs = acb->common.bs;
 
-    acb->req.error = bdrv_co_flush(bs);
+    if (!bdrv_is_protocol(bs) && qemu_coroutine_canceled()) {
+        acb->req.error = ECANCELED;
+    } else {
+        acb->req.error = bdrv_co_flush(bs);
+    }
     acb->co = NULL;
     acb->bh = qemu_bh_new(bdrv_co_em_bh, acb);
     qemu_bh_schedule(acb->bh);
@@ -3332,7 +3343,11 @@ static void coroutine_fn bdrv_aio_discard_co_entry(void *opaque)
     BlockDriverAIOCBCoroutine *acb = opaque;
     BlockDriverState *bs = acb->common.bs;
 
-    acb->req.error = bdrv_co_discard(bs, acb->req.sector, acb->req.nb_sectors);
+    if (!bdrv_is_protocol(bs) && qemu_coroutine_canceled()) {
+        acb->req.error = ECANCELED;
+    } else {
+        acb->req.error = bdrv_co_discard(bs, acb->req.sector, acb->req.nb_sectors);
+    }
     acb->co = NULL;
     acb->bh = qemu_bh_new(bdrv_co_em_bh, acb);
     qemu_bh_schedule(acb->bh);
