@@ -3,6 +3,12 @@
 
 #include <stdarg.h>
 #include <stddef.h>
+#ifdef __FreeBSD__
+#include <sys/param.h> /* For __FreeBSD_version */
+#undef PAGE_MASK
+#undef PAGE_SHIFT
+#undef PAGE_SIZE
+#endif
 #ifdef __OpenBSD__
 #include <sys/types.h>
 #include <sys/signal.h>

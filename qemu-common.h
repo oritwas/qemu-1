@@ -46,8 +46,20 @@ typedef struct Monitor Monitor;
 #include "qemu-os-posix.h"
 #endif
 
+/* FreeBSD and OS X do not have O_DSYNC */
+#ifndef O_DSYNC
+#ifdef O_SYNC
+#define O_DSYNC O_SYNC
+#elif defined(O_FSYNC)
+#define O_DSYNC O_FSYNC
+#endif
+#endif
+
 #ifndef O_LARGEFILE
 #define O_LARGEFILE 0
+#endif
+#ifndef O_NOATIME
+#define O_NOATIME 0
 #endif
 #ifndef O_BINARY
 #define O_BINARY 0

@@ -40,6 +40,10 @@
 #include "net/slirp.h"
 #include "qemu-options.h"
 
+#ifdef __FreeBSD__
+#include <sys/sysctl.h>
+#endif
+
 #ifdef CONFIG_LINUX
 #include <sys/prctl.h>
 #endif
