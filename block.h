@@ -434,6 +434,7 @@ typedef struct BlockConf {
 } BlockConf;
 
 unsigned int get_physical_block_exp(BlockConf *conf);
+unsigned int get_min_io_size(BlockConf *conf);
 
 #define DEFINE_BLOCK_PROPERTIES(_state, _conf)                          \
     DEFINE_PROP_DRIVE("drive", _state, _conf.bs),                       \

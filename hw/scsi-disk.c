@@ -600,7 +600,7 @@ static int scsi_disk_emulate_inquiry(SCSIRequest *req, uint8_t *outbuf)
             unsigned int unmap_sectors =
                     s->qdev.conf.discard_granularity / s->qdev.blocksize;
             unsigned int min_io_size =
-                    s->qdev.conf.min_io_size / s->qdev.blocksize;
+                    get_min_io_size(&s->qdev.conf) / s->qdev.blocksize;
             unsigned int opt_io_size =
                     s->qdev.conf.opt_io_size / s->qdev.blocksize;
 

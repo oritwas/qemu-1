@@ -4525,3 +4525,20 @@ void block_job_sleep_ns(BlockJob *job, QEMUClock *clock, int64_t ns)
         job->busy = true;
     }
 }
+
+unsigned int get_min_io_size(BlockConf *conf)
+{
+    if (conf->min_io_size) {
+        return conf->min_io_size;
+    }
+
+    /* Ask the OS to avoid read-modify-write cycles.  But when running
+     * on 512b-sector disks, we should not modify the parameters that
+     * guests had seen so far.
+     */
+    if (conf->bs->host_block_size > conf->logical_block_size) {
+        return conf->bs->host_block_size;
+    }
+
+    return 0;
+}

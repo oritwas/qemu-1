@@ -488,7 +488,7 @@ static void virtio_blk_update_config(VirtIODevice *vdev, uint8_t *config)
     stl_raw(&blkcfg.seg_max, 128 - 2);
     stw_raw(&blkcfg.cylinders, cylinders);
     stl_raw(&blkcfg.blk_size, blk_size);
-    stw_raw(&blkcfg.min_io_size, s->conf->min_io_size / blk_size);
+    stw_raw(&blkcfg.min_io_size, get_min_io_size(s->conf) / blk_size);
     stw_raw(&blkcfg.opt_io_size, s->conf->opt_io_size / blk_size);
     blkcfg.heads = heads;
     /*
