@@ -41,6 +41,7 @@ do { printf("scsi-disk: " fmt , ## __VA_ARGS__); } while (0)
 #include <scsi/sg.h>
 #endif
 
+#define SCSI_WRITE_SAME_MAX  65536
 #define SCSI_DMA_BUF_SIZE    131072
 #define SCSI_MAX_INQUIRY_LEN 256
 #define SCSI_MAX_MODE_LEN    256
@@ -1541,9 +1542,69 @@ invalid_param_len:
     return;
 }
 
+static void scsi_write_same_complete(void * opaque, int ret)
+{
+    SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+    uint32_t n;
+
+    if (r->req.aiocb != NULL) {
+        r->req.aiocb = NULL;
+        bdrv_acct_done(s->qdev.conf.bs, &r->acct);
+    }
+
+    if (!ret && s->tray_open) {
+        ret = -ENOMEDIUM;
+    }
+
+    if (ret) {
+        if (scsi_handle_rw_error(r, -ret)) {
+            goto done;
+        }
+    }
+
+    if (r->req.io_canceled) {
+        goto done;
+    }
+
+    r->qiov.size = MIN(r->qiov.size, r->sector_count * BDRV_SECTOR_SIZE);
+    n = r->qiov.size / BDRV_SECTOR_SIZE;
+    if (r->sector_count == 0) {
+        scsi_req_complete(&r->req, GOOD);
+    } else {
+        /* The request is used as the AIO opaque value, so add a ref.  */
+        scsi_req_ref(&r->req);
+        bdrv_acct_start(s->qdev.conf.bs, &r->acct, r->qiov.size,
+                        BDRV_ACCT_WRITE);
+        r->req.aiocb = bdrv_aio_writev(s->qdev.conf.bs, r->sector, &r->qiov,
+                                       n, scsi_write_same_complete, r);
+    }
+    r->sector += n;
+    r->sector_count -= n;
+
+done:
+    if (!r->req.io_canceled) {
+        scsi_req_unref(&r->req);
+    }
+}
+
+static void scsi_start_discard(SCSIDiskReq *r)
+{
+    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+
+    /* The request is used as the AIO opaque value, so add a ref.  */
+    scsi_req_ref(&r->req);
+    r->req.aiocb = bdrv_aio_discard(s->qdev.conf.bs,
+                                    r->sector * (s->qdev.blocksize / 512),
+                                    r->sector_count * (s->qdev.blocksize / 512),
+                                    scsi_aio_complete, r);
+}
+
 static void scsi_disk_emulate_write_data(SCSIRequest *req)
 {
     SCSIDiskReq *r = DO_UPCAST(SCSIDiskReq, req, req);
+    uint8_t *dma;
+    int size;
 
     if (r->iov.iov_len) {
         int buflen = r->iov.iov_len;
@@ -1563,6 +1624,29 @@ static void scsi_disk_emulate_write_data(SCSIRequest *req)
     case UNMAP:
         scsi_disk_emulate_unmap(r, r->iov.iov_base);
         break;
+
+    case WRITE_SAME_16:
+    case WRITE_SAME_10:
+        if (req->cmd.buf[1] & 0x8) {
+            scsi_start_discard(r);
+        } else {
+            /* Make a buffer to transfer data in larger chunks.  */
+            dma = r->iov.iov_base;
+            r->iov.iov_base = NULL;
+            scsi_init_iovec(r, SCSI_DMA_BUF_SIZE);
+
+            size = req->cmd.xfer;
+            memcpy(r->iov.iov_base, dma, size);
+            qemu_vfree(dma);
+            while (size < r->iov.iov_len) {
+                size_t n = MIN(size, r->iov.iov_len - size);
+                memcpy(r->iov.iov_base, r->iov.iov_base + size, n);
+                size += n;
+            }
+
+            scsi_write_same_complete(r, 0);
+            break;
+        }
 
     default:
         abort();
@@ -1802,34 +1886,29 @@ static int32_t scsi_disk_emulate_command(SCSIRequest *req, uint8_t *buf)
         DPRINTF("Unmap (len %lu)\n", (long)r->req.cmd.xfer);
         break;
     case WRITE_SAME_10:
-        nb_sectors = lduw_be_p(&req->cmd.buf[7]);
+        r->sector_count = lduw_be_p(&req->cmd.buf[7]);
         goto write_same;
     case WRITE_SAME_16:
-        nb_sectors = ldl_be_p(&req->cmd.buf[10]) & 0xffffffffULL;
+        r->sector_count = ldl_be_p(&req->cmd.buf[10]) & 0xffffffffULL;
     write_same:
         if (bdrv_is_read_only(s->qdev.conf.bs)) {
             scsi_check_condition(r, SENSE_CODE(WRITE_PROTECTED));
             return 0;
         }
+
+        r->sector = r->req.cmd.lba;
+        DPRINTF("WRITE SAME(16) (sector %" PRId64 ", count %d)\n",
+                r->req.cmd.lba, nb_sectors);
+
         if (r->req.cmd.lba > r->req.cmd.lba + nb_sectors ||
             r->req.cmd.lba + nb_sectors - 1 > s->qdev.max_lba) {
             goto illegal_lba;
         }
-
-        /*
-         * We only support WRITE SAME with the unmap bit set for now.
-         */
-        if (!(req->cmd.buf[1] & 0x8)) {
+        if (req->cmd.buf[1] & 0x6) {
+            /* PBDATA/LBDATA not supported.  */
             goto illegal_request;
         }
-
-        /* The request is used as the AIO opaque value, so add a ref.  */
-        scsi_req_ref(&r->req);
-        r->req.aiocb = bdrv_aio_discard(s->qdev.conf.bs,
-                                        r->req.cmd.lba * (s->qdev.blocksize / 512),
-                                        nb_sectors * (s->qdev.blocksize / 512),
-                                        scsi_aio_complete, r);
-        return 0;
+        break;
     default:
         DPRINTF("Unknown SCSI command (%2.2x)\n", buf[0]);
         scsi_check_condition(r, SENSE_CODE(INVALID_OPCODE));
