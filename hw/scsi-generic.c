@@ -39,7 +39,9 @@ do { fprintf(stderr, "scsi-generic: " fmt , ## __VA_ARGS__); } while (0)
 
 #define SCSI_SENSE_BUF_SIZE 96
 
+#define SG_ERR_DRIVER_ERROR    0x04
 #define SG_ERR_DRIVER_TIMEOUT  0x06
+#define SG_ERR_DRIVER_HARD     0x07
 #define SG_ERR_DRIVER_SENSE    0x08
 
 #define SG_ERR_DID_OK          0x00
@@ -47,6 +49,9 @@ do { fprintf(stderr, "scsi-generic: " fmt , ## __VA_ARGS__); } while (0)
 #define SG_ERR_DID_BUS_BUSY    0x02
 #define SG_ERR_DID_TIME_OUT    0x03
 #define SG_ERR_DID_ABORT       0x05
+#define SG_ERR_DID_SOFT_ERROR  0x0b
+#define SG_ERR_DID_IMM_RETRY   0x0c
+#define SG_ERR_DID_REQUEUE     0x0d
 
 #ifndef MAX_UINT
 #define MAX_UINT ((unsigned int)-1)
@@ -89,55 +94,126 @@ static void scsi_free_request(SCSIRequest *req)
     g_free(r->buf);
 }
 
+/*
+ * scsi_handle_rw_error has two return values.  0 means that the error
+ * must be ignored, 1 means that the error has been processed and the
+ * caller should not do anything else for this request.  Note that
+ * scsi_handle_rw_error always manages its reference counts, independent
+ * of the return value.
+ */
+static int scsi_handle_rw_error(SCSIGenericReq *r, int error)
+{
+    int is_read = (r->req.cmd.xfer == SCSI_XFER_FROM_DEV);
+    SCSIDevice *s = r->req.dev;
+    BlockErrorAction action = bdrv_get_on_error(s->conf.bs, is_read);
+
+    if (action == BLOCK_ERR_IGNORE) {
+        bdrv_mon_event(s->conf.bs, BDRV_ACTION_IGNORE, is_read);
+        return 0;
+    }
+
+    if ((error == ENOSPC && action == BLOCK_ERR_STOP_ENOSPC)
+            || action == BLOCK_ERR_STOP_ANY) {
+
+        bdrv_mon_event(s->conf.bs, BDRV_ACTION_STOP, is_read);
+        vm_stop(RUN_STATE_IO_ERROR);
+        bdrv_iostatus_set_err(s->conf.bs, error ? error : -EBADR);
+        scsi_req_retry(&r->req);
+    } else {
+        switch (error) {
+        case 0:
+            return 0;
+        case EDOM:
+            scsi_req_complete(&r->req, TASK_SET_FULL);
+            break;
+        case ENOMEM:
+            scsi_req_build_sense(&r->req, SENSE_CODE(TARGET_FAILURE));
+            scsi_req_complete(&r->req, CHECK_CONDITION);
+            break;
+        default:
+            scsi_req_build_sense(&r->req, SENSE_CODE(IO_ERROR));
+            scsi_req_complete(&r->req, CHECK_CONDITION);
+            break;
+        }
+        bdrv_mon_event(s->conf.bs, BDRV_ACTION_REPORT, is_read);
+    }
+    return 1;
+}
+
 /* Helper function for command completion.  */
 static void scsi_command_complete(void *opaque, int ret)
 {
     int status;
     SCSIGenericReq *r = (SCSIGenericReq *)opaque;
+    SCSISense sense;
 
     r->req.aiocb = NULL;
     if (r->io_header.driver_status & SG_ERR_DRIVER_SENSE) {
         r->req.sense_len = r->io_header.sb_len_wr;
+        sense = scsi_parse_sense(r->req.sense, r->req.sense_len);
+    } else {
+        sense = SENSE_CODE(NO_SENSE);
     }
 
-    if (ret != 0) {
-        switch (ret) {
-        case -EDOM:
-            status = TASK_SET_FULL;
-            break;
-        case -ENOMEM:
-            status = CHECK_CONDITION;
-            scsi_req_build_sense(&r->req, SENSE_CODE(TARGET_FAILURE));
-            break;
-        default:
-            status = CHECK_CONDITION;
-            scsi_req_build_sense(&r->req, SENSE_CODE(IO_ERROR));
-            break;
+    r->io_header.driver_status &= ~SG_ERR_DRIVER_SENSE;
+    status = GOOD;
+    if (ret != 0 ||
+        r->io_header.host_status ||
+        r->io_header.driver_status ||
+        r->io_header.status ||
+        r->req.sense_len) {
+
+        /* Something went wrong... */
+        if (r->io_header.host_status == SG_ERR_DID_IMM_RETRY ||
+            r->io_header.host_status == SG_ERR_DID_SOFT_ERROR ||
+            r->io_header.host_status == SG_ERR_DID_REQUEUE) {
+            scsi_req_retry(&r->req);
+            goto done;
         }
-    } else {
-        if (r->io_header.host_status == SG_ERR_DID_ABORT) {
+
+        /* See if we need to stop the VM.  */
+        if (ret != 0 ||
+            r->io_header.host_status ||
+            r->io_header.driver_status == SG_ERR_DRIVER_ERROR ||
+            r->io_header.driver_status == SG_ERR_DRIVER_HARD ||
+            sense.key == MEDIUM_ERROR || sense.key == HARDWARE_ERROR ||
+            sense.key == FIRMWARE_ERROR || sense.key == ABORTED_COMMAND ||
+            sense.key == COPY_ABORTED) {
+            if (scsi_handle_rw_error(r, -ret)) {
+                goto done;
+            }
+        }
+
+        /* Passing the status down; for now, approximate host and driver
+         * statuses with a sense code.  Later we may want to pass this
+         * down to the HBA.
+         */
+        if (r->io_header.status) {
+            status = r->io_header.status;
+        } else if (r->req.sense_len) {
+            status = CHECK_CONDITION;
+	} else if (r->io_header.host_status == SG_ERR_DID_ABORT) {
             status = TASK_ABORTED;
-	} else if (r->io_header.host_status == SG_ERR_DID_NO_CONNECT ||
-                   r->io_header.host_status == SG_ERR_DID_BUS_BUSY ||
-                   r->io_header.host_status == SG_ERR_DID_TIME_OUT ||
-                   (r->io_header.driver_status & SG_ERR_DRIVER_TIMEOUT)) {
+        } else if (r->io_header.host_status == SG_ERR_DID_NO_CONNECT ||
+            r->io_header.host_status == SG_ERR_DID_BUS_BUSY ||
+            r->io_header.host_status == SG_ERR_DID_TIME_OUT ||
+            r->io_header.driver_status == SG_ERR_DRIVER_TIMEOUT) {
             status = BUSY;
             BADF("Driver Timeout\n");
         } else if (r->io_header.host_status) {
             status = CHECK_CONDITION;
             scsi_req_build_sense(&r->req, SENSE_CODE(I_T_NEXUS_LOSS));
-        } else if (r->io_header.status) {
-            status = r->io_header.status;
-        } else if (r->io_header.driver_status & SG_ERR_DRIVER_SENSE) {
-            status = CHECK_CONDITION;
         } else {
-            status = GOOD;
+            status = CHECK_CONDITION;
+            scsi_req_build_sense(&r->req, SENSE_CODE(IO_ERROR));
         }
     }
     DPRINTF("Command complete 0x%p tag=0x%x status=%d\n",
             r, r->req.tag, status);
 
     scsi_req_complete(&r->req, status);
+
+done:
     if (!r->req.io_canceled) {
         scsi_req_unref(&r->req);
     }
@@ -461,6 +537,7 @@ static int scsi_generic_initfn(SCSIDevice *s)
         break;
     }
 
+    bdrv_iostatus_enable(s->conf.bs);
     DPRINTF("block size %d\n", s->blocksize);
     return 0;
 }
