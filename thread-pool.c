@@ -75,6 +75,32 @@ static int idle_threads;
 static int new_threads;     /* backlog of threads we need to create */
 static int pending_threads; /* threads created but not running yet */
 
+static ThreadPoolElement *thread_pool_dequeue(void)
+{
+    ThreadPoolElement *dummy, *acb;
+
+    /* We always keep a dummy node at the head of the queue.  Each node
+     * start acting as dummy node as soon as it is removed, so we remove
+     * the first node and return the _new_ first node.
+     *
+     * Excluding the empty case thanks to the semaphore, the queue will
+     * always have at least two nodes (the dummy node, and the one
+     * being removed).  So we do not need to update the tail pointer!
+     */
+    qemu_mutex_lock(&queue_lock);
+    dummy = QSIMPLEQ_FIRST(&request_list);
+    QSIMPLEQ_REMOVE_HEAD(&request_list, node);
+
+    acb = QSIMPLEQ_NEXT(dummy, node);
+    qemu_aio_release(dummy);
+
+    /* acb is the new dummy node.  */
+    qemu_aio_ref(acb);
+    qemu_mutex_unlock(&queue_lock);
+
+    return acb;
+}
+
 static void *worker_thread(void *unused)
 {
     qemu_mutex_lock(&lock);
@@ -102,10 +128,7 @@ static void *worker_thread(void *unused)
             atomic_inc(&cur_threads);
         }
 
-        qemu_mutex_lock(&queue_lock);
-        req = QSIMPLEQ_FIRST(&request_list);
-        QSIMPLEQ_REMOVE_HEAD(&request_list, reqs);
-        qemu_mutex_unlock(&queue_lock);
+        req = thread_pool_dequeue();
 
         ret = atomic_cmpxchg(&req->state, THREAD_QUEUED, THREAD_ACTIVE);
         if (ret == THREAD_CANCELLED) {
@@ -239,9 +262,7 @@ BlockDriverAIOCB *thread_pool_submit_aio(ThreadPoolFunc *func, void *arg,
 
     trace_thread_pool_submit(req, arg);
 
-    qemu_mutex_lock(&queue_lock);
-    QSIMPLEQ_INSERT_TAIL(&request_list, req, reqs);
-    qemu_mutex_unlock(&queue_lock);
+    QSIMPLEQ_INSERT_TAIL_ATOMIC(&request_list, req, reqs);
     qemu_sem_post(&sem);
 
     if (atomic_read(&idle_threads) == 0 &&
@@ -288,7 +309,11 @@ static void thread_pool_init(void)
     qemu_aio_set_event_notifier(&notifier, event_notifier_ready,
                                 thread_pool_active);
 
+    /* Insert a dummy node in the request list; see paio_dequeue.  */
+    acb = qemu_aio_get(&raw_aio_pool, NULL, NULL, NULL);
     QSIMPLEQ_INIT(&request_list);
+    QSIMPLEQ_INSERT_TAIL(&request_list, acb, node);
+
     new_thread_bh = qemu_bh_new(spawn_thread_bh_fn, NULL);
 }
 

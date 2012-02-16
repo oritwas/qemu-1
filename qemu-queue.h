@@ -66,7 +66,9 @@
  * linked to save space, so elements can only be removed from the
  * head of the list. New elements can be added to the list after
  * an existing element, at the head of the list, or at the end of the
- * list. A simple queue may only be traversed in the forward direction.
+ * list.  Insertion at the tail can be done atomically and wait-free
+ * as long as the queue is not empty at the moment of insertion.
+ * A simple queue may only be traversed in the forward direction.
  *
  * A tail queue is headed by a pair of pointers, one to the head of the
  * list and the other to the tail of the list. The elements are doubly
@@ -255,6 +257,12 @@ struct {                                                                \
     (elm)->field.sqe_next = NULL;                                       \
     *(head)->sqh_last = (elm);                                          \
     (head)->sqh_last = &(elm)->field.sqe_next;                          \
+} while (/*CONSTCOND*/0)
+
+#define QSIMPLEQ_INSERT_TAIL_ATOMIC(head, elm, field) do {              \
+    (elm)->field.sqe_next = NULL;                                       \
+    atomic_set(atomic_xchg(&(head)->sqh_last, &(elm)->field.sqe_next),  \
+               (elm));                                                  \
 } while (/*CONSTCOND*/0)
 
 #define QSIMPLEQ_INSERT_AFTER(head, listelm, elm, field) do {           \
