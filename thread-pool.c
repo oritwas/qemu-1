@@ -48,7 +48,7 @@ struct ThreadPoolElement {
     int ret;
 
     /* Access to this list is protected by lock.  */
-    QTAILQ_ENTRY(ThreadPoolElement) reqs;
+    QSIMPLEQ_ENTRY(ThreadPoolElement) reqs;
 
     /* Access to this list is protected by the global mutex.  */
     QLIST_ENTRY(ThreadPoolElement) all;
@@ -66,7 +66,7 @@ static QEMUBH *new_thread_bh;
 static QLIST_HEAD(, ThreadPoolElement) head;
 
 /* The following variables are protected by queue_lock.  */
-static QTAILQ_HEAD(, ThreadPoolElement) request_list;
+static QSIMPLEQ_HEAD(, ThreadPoolElement) request_list;
 static int pending_cancellations; /* whether we need a cond_broadcast */
 
 /* The following variables are protected by lock.  */
@@ -103,8 +103,8 @@ static void *worker_thread(void *unused)
         }
 
         qemu_mutex_lock(&queue_lock);
-        req = QTAILQ_FIRST(&request_list);
-        QTAILQ_REMOVE(&request_list, req, reqs);
+        req = QSIMPLEQ_FIRST(&request_list);
+        QSIMPLEQ_REMOVE_HEAD(&request_list, reqs);
         qemu_mutex_unlock(&queue_lock);
 
         ret = atomic_cmpxchg(&req->state, THREAD_QUEUED, THREAD_ACTIVE);
@@ -240,7 +240,7 @@ BlockDriverAIOCB *thread_pool_submit_aio(ThreadPoolFunc *func, void *arg,
     trace_thread_pool_submit(req, arg);
 
     qemu_mutex_lock(&queue_lock);
-    QTAILQ_INSERT_TAIL(&request_list, req, reqs);
+    QSIMPLEQ_INSERT_TAIL(&request_list, req, reqs);
     qemu_mutex_unlock(&queue_lock);
     qemu_sem_post(&sem);
 
@@ -288,7 +288,7 @@ static void thread_pool_init(void)
     qemu_aio_set_event_notifier(&notifier, event_notifier_ready,
                                 thread_pool_active);
 
-    QTAILQ_INIT(&request_list);
+    QSIMPLEQ_INIT(&request_list);
     new_thread_bh = qemu_bh_new(spawn_thread_bh_fn, NULL);
 }
 
