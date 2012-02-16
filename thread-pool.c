@@ -102,13 +102,19 @@ static void *worker_thread(void *unused)
         qemu_mutex_lock(&lock);
         req = QTAILQ_FIRST(&request_list);
         QTAILQ_REMOVE(&request_list, req, reqs);
-        req->state = THREAD_ACTIVE;
         qemu_mutex_unlock(&lock);
 
-        ret = req->func(req->arg);
+        ret = atomic_cmpxchg(&req->state, THREAD_QUEUED, THREAD_ACTIVE);
+        if (ret == THREAD_CANCELLED) {
+            /* Setting req->ret is for tracing purposes only.  */
+            req->ret = -ECANCELED;
+            req->common.cb = NULL;
+        } else {
+            assert(ret == THREAD_QUEUED);
 
-        req->ret = ret;
-        /* Write ret before state.  */
+            req->ret = req->func(req->arg);
+        }
+        /* Write ret or cb before state.  */
         smp_wmb();
         req->state = THREAD_DONE;
 
@@ -117,7 +123,6 @@ static void *worker_thread(void *unused)
             qemu_cond_broadcast(&check_cancel);
         }
         qemu_mutex_unlock(&lock);
-
         event_notifier_set(&notifier);
     }
     return NULL;
@@ -171,16 +176,14 @@ static void event_notifier_ready(EventNotifier *notifier)
     event_notifier_test_and_clear(notifier);
 restart:
     QLIST_FOREACH_SAFE(elem, &head, all, next) {
-        if (elem->state != THREAD_CANCELED && elem->state != THREAD_DONE) {
+        if (elem->state != THREAD_DONE) {
             continue;
         }
-        if (elem->state == THREAD_DONE) {
-            trace_thread_pool_complete(elem, elem->common.opaque, elem->ret);
-        }
-        if (elem->state == THREAD_DONE && elem->common.cb) {
+        trace_thread_pool_complete(elem, elem->common.opaque, elem->ret);
+        /* Read state before ret or cb.  */
+        smp_rmb();
+        if (elem->common.cb) {
             QLIST_REMOVE(elem, all);
-            /* Read state before ret.  */
-            smp_rmb();
             elem->common.cb(elem->common.opaque, elem->ret);
             qemu_aio_release(elem);
             goto restart;
@@ -203,25 +206,15 @@ static void thread_pool_cancel(BlockDriverAIOCB *acb)
 
     trace_thread_pool_cancel(elem, elem->common.opaque);
 
-    qemu_mutex_lock(&lock);
-    if (elem->state == THREAD_QUEUED &&
-        /* No thread has yet started working on elem. we can try to "steal"
-         * the item from the worker if we can get a signal from the
-         * semaphore.  Because this is non-blocking, we can do it with
-         * the lock taken and ensure that elem will remain THREAD_QUEUED.
-         */
-        qemu_sem_timedwait(&sem, 0) == 0) {
-        QTAILQ_REMOVE(&request_list, elem, reqs);
-        elem->state = THREAD_CANCELED;
-        event_notifier_set(&notifier);
-    } else {
+    if (atomic_cmpxchg(&acb->state, THREAD_QUEUED, THREAD_CANCELED) == THREAD_ACTIVE) {
+        qemu_mutex_lock(&lock);
         pending_cancellations++;
         while (elem->state != THREAD_CANCELED && elem->state != THREAD_DONE) {
             qemu_cond_wait(&check_cancel, &lock);
         }
         pending_cancellations--;
+        qemu_mutex_unlock(&lock);
     }
-    qemu_mutex_unlock(&lock);
 }
 
 static AIOPool thread_pool_cb_pool = {
