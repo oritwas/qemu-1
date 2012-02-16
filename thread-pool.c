@@ -77,22 +77,29 @@ static void *worker_thread(void *unused)
     qemu_mutex_lock(&lock);
     pending_threads--;
     do_spawn_thread();
+    qemu_mutex_unlock(&lock);
 
     while (1) {
         ThreadPoolElement *req;
         int ret;
 
-        do {
-            idle_threads++;
-            qemu_mutex_unlock(&lock);
-            ret = qemu_sem_timedwait(&sem, 10000);
-            qemu_mutex_lock(&lock);
-            idle_threads--;
-        } while (ret == -1 && !QTAILQ_EMPTY(&request_list));
+        atomic_inc(&idle_threads);
+        ret = qemu_sem_timedwait(&sem, 10000);
+        atomic_dec(&idle_threads);
         if (ret == -1) {
-            break;
+            atomic_dec(&cur_threads);
+            /* There is a small window in which a producer could have
+             * thought of this thread as an idle thread, so check for
+             * more work.
+             */
+            ret = qemu_sem_timedwait(&sem, 0);
+            if (ret == -1) {
+                return NULL;
+            }
+            atomic_inc(&cur_threads);
         }
 
+        qemu_mutex_lock(&lock);
         req = QTAILQ_FIRST(&request_list);
         QTAILQ_REMOVE(&request_list, req, reqs);
         req->state = THREAD_ACTIVE;
@@ -109,12 +116,10 @@ static void *worker_thread(void *unused)
         if (pending_cancellations) {
             qemu_cond_broadcast(&check_cancel);
         }
+        qemu_mutex_unlock(&lock);
 
         event_notifier_set(&notifier);
     }
-
-    cur_threads--;
-    qemu_mutex_unlock(&lock);
     return NULL;
 }
 
@@ -142,7 +147,9 @@ static void spawn_thread_bh_fn(void *opaque)
 
 static void spawn_thread(void)
 {
-    cur_threads++;
+    atomic_inc(&cur_threads);
+
+    qemu_mutex_lock(&lock);
     new_threads++;
     /* If there are threads being created, they will spawn new workers, so
      * we don't spend time creating many threads in a loop holding a mutex or
@@ -154,6 +161,7 @@ static void spawn_thread(void)
     if (!pending_threads) {
         qemu_bh_schedule(new_thread_bh);
     }
+    qemu_mutex_unlock(&lock);
 }
 
 static void event_notifier_ready(EventNotifier *notifier)
@@ -236,12 +244,14 @@ BlockDriverAIOCB *thread_pool_submit_aio(ThreadPoolFunc *func, void *arg,
     trace_thread_pool_submit(req, arg);
 
     qemu_mutex_lock(&lock);
-    if (idle_threads == 0 && cur_threads < max_threads) {
-        spawn_thread();
-    }
     QTAILQ_INSERT_TAIL(&request_list, req, reqs);
     qemu_mutex_unlock(&lock);
     qemu_sem_post(&sem);
+
+    if (atomic_read(&idle_threads) == 0 &&
+        atomic_read(&cur_threads) < max_threads) {
+        spawn_thread();
+    }
     return &req->common;
 }
 
