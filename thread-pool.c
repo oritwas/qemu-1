@@ -56,6 +56,7 @@ struct ThreadPoolElement {
 
 static EventNotifier notifier;
 static QemuMutex lock;
+static QemuMutex queue_lock;
 static QemuCond check_cancel;
 static QemuSemaphore sem;
 static int max_threads = 64;
@@ -64,13 +65,15 @@ static QEMUBH *new_thread_bh;
 /* The following variables are protected by the global mutex.  */
 static QLIST_HEAD(, ThreadPoolElement) head;
 
-/* The following variables are protected by lock.  */
+/* The following variables are protected by queue_lock.  */
 static QTAILQ_HEAD(, ThreadPoolElement) request_list;
+static int pending_cancellations; /* whether we need a cond_broadcast */
+
+/* The following variables are protected by lock.  */
 static int cur_threads;
 static int idle_threads;
 static int new_threads;     /* backlog of threads we need to create */
 static int pending_threads; /* threads created but not running yet */
-static int pending_cancellations; /* whether we need a cond_broadcast */
 
 static void *worker_thread(void *unused)
 {
@@ -99,10 +102,10 @@ static void *worker_thread(void *unused)
             atomic_inc(&cur_threads);
         }
 
-        qemu_mutex_lock(&lock);
+        qemu_mutex_lock(&queue_lock);
         req = QTAILQ_FIRST(&request_list);
         QTAILQ_REMOVE(&request_list, req, reqs);
-        qemu_mutex_unlock(&lock);
+        qemu_mutex_unlock(&queue_lock);
 
         ret = atomic_cmpxchg(&req->state, THREAD_QUEUED, THREAD_ACTIVE);
         if (ret == THREAD_CANCELLED) {
@@ -118,11 +121,11 @@ static void *worker_thread(void *unused)
         smp_wmb();
         req->state = THREAD_DONE;
 
-        qemu_mutex_lock(&lock);
+        qemu_mutex_lock(&queue_lock);
         if (pending_cancellations) {
             qemu_cond_broadcast(&check_cancel);
         }
-        qemu_mutex_unlock(&lock);
+        qemu_mutex_unlock(&queue_lock);
         event_notifier_set(&notifier);
     }
     return NULL;
@@ -207,13 +210,13 @@ static void thread_pool_cancel(BlockDriverAIOCB *acb)
     trace_thread_pool_cancel(elem, elem->common.opaque);
 
     if (atomic_cmpxchg(&acb->state, THREAD_QUEUED, THREAD_CANCELED) == THREAD_ACTIVE) {
-        qemu_mutex_lock(&lock);
+        qemu_mutex_lock(&queue_lock);
         pending_cancellations++;
         while (elem->state != THREAD_CANCELED && elem->state != THREAD_DONE) {
-            qemu_cond_wait(&check_cancel, &lock);
+            qemu_cond_wait(&check_cancel, &queue_lock);
         }
         pending_cancellations--;
-        qemu_mutex_unlock(&lock);
+        qemu_mutex_unlock(&queue_lock);
     }
 }
 
@@ -236,9 +239,9 @@ BlockDriverAIOCB *thread_pool_submit_aio(ThreadPoolFunc *func, void *arg,
 
     trace_thread_pool_submit(req, arg);
 
-    qemu_mutex_lock(&lock);
+    qemu_mutex_lock(&queue_lock);
     QTAILQ_INSERT_TAIL(&request_list, req, reqs);
-    qemu_mutex_unlock(&lock);
+    qemu_mutex_unlock(&queue_lock);
     qemu_sem_post(&sem);
 
     if (atomic_read(&idle_threads) == 0 &&
