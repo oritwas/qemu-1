@@ -34,6 +34,7 @@
 #include "qemu-coroutine.h"
 #include "qmp-commands.h"
 #include "qemu-timer.h"
+#include "qemu/atomic.h"
 
 #ifdef CONFIG_BSD
 #include <sys/types.h>
@@ -3919,15 +3920,24 @@ void *qemu_aio_get(AIOPool *pool, BlockDriverState *bs,
     acb->bs = bs;
     acb->cb = cb;
     acb->opaque = opaque;
+    acb->refcount = 1;
     return acb;
+}
+
+void qemu_aio_ref(void *p)
+{
+    BlockDriverAIOCB *acb = (BlockDriverAIOCB *)p;
+    atomic_inc(&acb->refcount);
 }
 
 void qemu_aio_release(void *p)
 {
     BlockDriverAIOCB *acb = (BlockDriverAIOCB *)p;
-    AIOPool *pool = acb->pool;
-    acb->next = pool->free_aiocb;
-    pool->free_aiocb = acb;
+    if (atomic_dec(&acb->refcount) == 1) {
+        AIOPool *pool = acb->pool;
+        acb->next = pool->free_aiocb;
+        pool->free_aiocb = acb;
+    }
 }
 
 /**************************************************************/

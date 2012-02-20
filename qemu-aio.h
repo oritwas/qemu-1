@@ -29,6 +29,7 @@ typedef struct AIOPool {
 
 struct BlockDriverAIOCB {
     AIOPool *pool;
+    int refcount;
     BlockDriverState *bs;
     BlockDriverCompletionFunc *cb;
     void *opaque;
@@ -37,6 +38,7 @@ struct BlockDriverAIOCB {
 
 void *qemu_aio_get(AIOPool *pool, BlockDriverState *bs,
                    BlockDriverCompletionFunc *cb, void *opaque);
+void qemu_aio_ref(void *p);
 void qemu_aio_release(void *p);
 
 typedef struct AioHandler AioHandler;
