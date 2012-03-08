@@ -358,6 +358,38 @@ static QEMUMachine pc_machine_v1_1 = {
 
 #define PC_COMPAT_1_0 \
         {\
+            .driver   = "ide-drive",
+            .property = "discard_granularity",
+            .value    = stringify(0),
+	}, {
+            .driver   = "ide-drive",
+            .property = "discard_zeroes_data",
+            .value    = "off",
+	}, {
+            .driver   = "ide-hd",
+            .property = "discard_granularity",
+            .value    = stringify(0),
+	}, {
+            .driver   = "ide-hd",
+            .property = "discard_zeroes_data",
+            .value    = "off",
+	}, {
+            .driver   = "scsi-disk",
+            .property = "discard_granularity",
+            .value    = stringify(0),
+	}, {
+            .driver   = "scsi-disk",
+            .property = "discard_zeroes_data",
+            .value    = "off",
+	}, {
+            .driver   = "scsi-hd",
+            .property = "discard_granularity",
+            .value    = stringify(0),
+	}, {
+            .driver   = "scsi-hd",
+            .property = "discard_zeroes_data",
+            .value    = "off",
+	}, {
             .driver   = "pc-sysfw",\
             .property = "rom_only",\
             .value    = stringify(1),\

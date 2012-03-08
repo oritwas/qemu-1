@@ -460,9 +460,9 @@ static inline unsigned int get_physical_block_exp(BlockConf *conf)
     DEFINE_PROP_UINT32("opt_io_size", _state, _conf.opt_io_size, 0),    \
     DEFINE_PROP_INT32("bootindex", _state, _conf.bootindex, -1),        \
     DEFINE_PROP_BIT("discard_zeroes_data", _state,                      \
-                    _conf.discard_zeroes_data, 0, false),               \
+                    _conf.discard_zeroes_data, 0, true),                \
     DEFINE_PROP_INT32("discard_granularity", _state,                    \
-                      _conf.discard_granularity, 0)
+                      _conf.discard_granularity, -1)
 
 #endif
 
