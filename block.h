@@ -434,6 +434,7 @@ typedef struct BlockConf {
     uint32_t opt_io_size;
     int32_t bootindex;
     uint32_t discard_granularity;
+    uint32_t discard_zeroes_data;
 } BlockConf;
 
 static inline unsigned int get_physical_block_exp(BlockConf *conf)
@@ -455,10 +456,12 @@ static inline unsigned int get_physical_block_exp(BlockConf *conf)
                           _conf.logical_block_size, 512),               \
     DEFINE_PROP_BLOCKSIZE("physical_block_size", _state,                \
                           _conf.physical_block_size, 512),              \
-    DEFINE_PROP_UINT16("min_io_size", _state, _conf.min_io_size, 0),  \
+    DEFINE_PROP_UINT16("min_io_size", _state, _conf.min_io_size, 0),    \
     DEFINE_PROP_UINT32("opt_io_size", _state, _conf.opt_io_size, 0),    \
     DEFINE_PROP_INT32("bootindex", _state, _conf.bootindex, -1),        \
-    DEFINE_PROP_UINT32("discard_granularity", _state, \
+    DEFINE_PROP_BIT("discard_zeroes_data", _state,                      \
+                    _conf.discard_zeroes_data, 0, false),               \
+    DEFINE_PROP_UINT32("discard_granularity", _state,                   \
                        _conf.discard_granularity, 0)
 
 #endif

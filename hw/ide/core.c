@@ -127,7 +127,11 @@ static void ide_identify(IDEState *s)
     put_le16(p + 67, 120);
     put_le16(p + 68, 120);
     if (dev && dev->conf.discard_granularity) {
-        put_le16(p + 69, (1 << 14)); /* determinate TRIM behavior */
+        int val;
+
+        val = 0x4000;
+        val |= dev->conf.discard_zeroes_data ? 0x20 : 0;
+        put_le16(p + 69, val); /* determinate TRIM behavior */
     }
 
     if (s->ncq_queues) {
