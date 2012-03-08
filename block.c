@@ -1785,6 +1785,7 @@ static int coroutine_fn bdrv_co_do_copy_on_readv(BlockDriverState *bs,
     int cluster_nb_sectors;
     size_t skip_bytes;
     int ret;
+    BlockDriverInfo bdi;
 
     /* Cover entire cluster so no additional backing file I/O is required when
      * allocating cluster in the image file.
@@ -1805,7 +1806,8 @@ static int coroutine_fn bdrv_co_do_copy_on_readv(BlockDriverState *bs,
         goto err;
     }
 
-    if (drv->bdrv_co_write_zeroes &&
+    /* If it is worthless, do not check if the buffer is zero.  */
+    if (bdrv_get_info(bs, &bdi) >= 0 && bdi.discard_zeroes_data &&
         buffer_is_zero(bounce_buffer, iov.iov_len)) {
         ret = bdrv_co_do_write_zeroes(bs, cluster_sector_num,
                                       cluster_nb_sectors, &bounce_qiov);
@@ -1914,6 +1916,7 @@ static int coroutine_fn bdrv_co_do_write_zeroes(BlockDriverState *bs,
     int64_t sector_num, int nb_sectors, QEMUIOVector *qiov)
 {
     BlockDriver *drv = bs->drv;
+    BlockDriverInfo bdi;
     QEMUIOVector my_qiov;
     struct iovec iov;
     int ret;
@@ -1921,12 +1924,11 @@ static int coroutine_fn bdrv_co_do_write_zeroes(BlockDriverState *bs,
     /* TODO Emulate only part of misaligned requests instead of letting block
      * drivers return -ENOTSUP and emulate everything */
 
-    /* First try the efficient write zeroes operation */
-    if (drv->bdrv_co_write_zeroes) {
-        ret = drv->bdrv_co_write_zeroes(bs, sector_num, nb_sectors);
-        if (ret != -ENOTSUP) {
-            return ret;
-        }
+    if (bdrv_get_info(bs, &bdi) >= 0 && bdi.discard_zeroes_data &&
+        bdi.discard_granularity &&
+        (sector_num & (bdi.discard_granularity - 1)) == 0 &&
+        (nb_sectors & (bdi.discard_granularity - 1)) == 0) {
+        return bdrv_co_discard(bs, sector_num, nb_sectors);
     }
 
     if (qiov) {

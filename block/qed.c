@@ -1386,13 +1386,6 @@ static BlockDriverAIOCB *bdrv_qed_aio_discard(BlockDriverState *bs,
                          QED_AIOCB_WRITE | QED_AIOCB_ZERO);
 }
 
-static int coroutine_fn bdrv_qed_co_write_zeroes(BlockDriverState *bs,
-                                                 int64_t sector_num,
-                                                 int nb_sectors)
-{
-    return bdrv_co_discard(bs, sector_num, nb_sectors);
-}
-
 static int bdrv_qed_truncate(BlockDriverState *bs, int64_t offset)
 {
     BDRVQEDState *s = bs->opaque;
@@ -1429,12 +1422,9 @@ static int bdrv_qed_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
     BDRVQEDState *s = bs->opaque;
 
     bdi->cluster_size = s->header.cluster_size;
-<<<<<<< HEAD
     bdi->is_dirty = s->header.features & QED_F_NEED_CHECK;
-=======
     bdi->discard_zeroes_data = true;
     bdi->discard_granularity = 1;
->>>>>>> 0878ce0... qed: implement bdrv_aio_discard
     return 0;
 }
 
@@ -1567,7 +1557,6 @@ static BlockDriver bdrv_qed = {
     .bdrv_aio_readv           = bdrv_qed_aio_readv,
     .bdrv_aio_writev          = bdrv_qed_aio_writev,
     .bdrv_aio_discard         = bdrv_qed_aio_discard,
-    .bdrv_co_write_zeroes     = bdrv_qed_co_write_zeroes,
     .bdrv_truncate            = bdrv_qed_truncate,
     .bdrv_getlength           = bdrv_qed_getlength,
     .bdrv_get_info            = bdrv_qed_get_info,
