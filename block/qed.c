@@ -876,7 +876,9 @@ static void qed_aio_complete(QEDAIOCB *acb, int ret)
     /* Free the buffer we may have allocated for zero writes */
     if (acb->flags & QED_AIOCB_ZERO) {
         qemu_vfree(acb->qiov->iov[0].iov_base);
-        acb->qiov->iov[0].iov_base = NULL;
+        qemu_iovec_destroy(acb->qiov);
+        g_free(acb->qiov);
+        acb->qiov = NULL;
     }
 
     /* Arrange for a bh to invoke the completion function */
@@ -1103,6 +1105,34 @@ static void qed_aio_write_zero_cluster(void *opaque, int ret)
 }
 
 /**
+ * Calculate the I/O vector
+ *
+ * @acb:        Write request
+ * @len:        Length in bytes
+ */
+static void qed_prepare_qiov(QEDAIOCB *acb, size_t len)
+{
+    /* Calculate the I/O vector */
+    if (acb->flags & QED_AIOCB_ZERO) {
+        /* Allocate buffer for zero writes */
+        if (!acb->qiov) {
+            BDRVQEDState *s = acb_to_s(acb);
+            char *base;
+
+            acb->qiov = g_malloc(sizeof(QEMUIOVector));
+            base = qemu_blockalign(s->bs, s->header.cluster_size);
+            qemu_iovec_init(acb->qiov, 1);
+            qemu_iovec_add(acb->qiov, base, s->header.cluster_size);
+            memset(base, 0, s->header.cluster_size);
+        }
+	assert(len <= acb->qiov->size);
+        qemu_iovec_add(&acb->cur_qiov, acb->qiov->iov[0].iov_base, len);
+    } else {
+        qemu_iovec_copy(&acb->cur_qiov, acb->qiov, acb->qiov_offset, len);
+    }
+}
+
+/**
  * Write new data cluster
  *
  * @acb:        Write request
@@ -1131,7 +1161,7 @@ static void qed_aio_write_alloc(QEDAIOCB *acb, size_t len)
 
     acb->cur_nclusters = qed_bytes_to_clusters(s,
             qed_offset_into_cluster(s, acb->cur_pos) + len);
-    qemu_iovec_copy(&acb->cur_qiov, acb->qiov, acb->qiov_offset, len);
+    qed_prepare_qiov(acb, len);
 
     if (acb->flags & QED_AIOCB_ZERO) {
         /* Skip ahead if the clusters are already zero */
@@ -1165,19 +1195,8 @@ static void qed_aio_write_alloc(QEDAIOCB *acb, size_t len)
  */
 static void qed_aio_write_inplace(QEDAIOCB *acb, uint64_t offset, size_t len)
 {
-    /* Allocate buffer for zero writes */
-    if (acb->flags & QED_AIOCB_ZERO) {
-        struct iovec *iov = acb->qiov->iov;
-
-        if (!iov->iov_base) {
-            iov->iov_base = qemu_blockalign(acb->common.bs, iov->iov_len);
-            memset(iov->iov_base, 0, iov->iov_len);
-        }
-    }
-
-    /* Calculate the I/O vector */
     acb->cur_cluster = offset;
-    qemu_iovec_copy(&acb->cur_qiov, acb->qiov, acb->qiov_offset, len);
+    qed_prepare_qiov(acb, len);
 
     /* Do the actual write */
     qed_aio_write_main(acb, 0);
@@ -1277,6 +1296,7 @@ static void qed_aio_next_io(void *opaque, int ret)
 {
     QEDAIOCB *acb = opaque;
     BDRVQEDState *s = acb_to_s(acb);
+    uint64_t len;
     QEDFindClusterFunc *io_fn = (acb->flags & QED_AIOCB_WRITE) ?
                                 qed_aio_write_data : qed_aio_read_data;
 
@@ -1298,10 +1318,14 @@ static void qed_aio_next_io(void *opaque, int ret)
         return;
     }
 
+    /* Limit buffer size when writing zeroes.  */
+    len = acb->end_pos - acb->cur_pos;
+    if (acb->flags & QED_AIOCB_ZERO) {
+        len = MIN(len, s->header.cluster_size);
+    }
+
     /* Find next cluster and start I/O */
-    qed_find_cluster(s, &acb->request,
-                      acb->cur_pos, acb->end_pos - acb->cur_pos,
-                      io_fn, acb);
+    qed_find_cluster(s, &acb->request, acb->cur_pos, len, io_fn, acb);
 }
 
 static BlockDriverAIOCB *qed_aio_setup(BlockDriverState *bs,
@@ -1322,7 +1346,7 @@ static BlockDriverAIOCB *qed_aio_setup(BlockDriverState *bs,
     acb->cur_pos = (uint64_t)sector_num * BDRV_SECTOR_SIZE;
     acb->end_pos = acb->cur_pos + nb_sectors * BDRV_SECTOR_SIZE;
     acb->request.l2_table = NULL;
-    qemu_iovec_init(&acb->cur_qiov, qiov->niov);
+    qemu_iovec_init(&acb->cur_qiov, qiov ? qiov->niov : 1);
 
     /* Start request */
     qed_aio_next_io(acb, 0);
@@ -1371,17 +1395,11 @@ static int coroutine_fn bdrv_qed_co_write_zeroes(BlockDriverState *bs,
 {
     BlockDriverAIOCB *blockacb;
     QEDWriteZeroesCB cb = { .done = false };
-    QEMUIOVector qiov;
-    struct iovec iov;
 
     /* Zero writes start without an I/O buffer.  If a buffer becomes necessary
      * then it will be allocated during request processing.
      */
-    iov.iov_base = NULL,
-    iov.iov_len  = nb_sectors * BDRV_SECTOR_SIZE,
-
-    qemu_iovec_init_external(&qiov, &iov, 1);
-    blockacb = qed_aio_setup(bs, sector_num, &qiov, nb_sectors,
+    blockacb = qed_aio_setup(bs, sector_num, NULL, nb_sectors,
                              qed_co_write_zeroes_cb, &cb,
                              QED_AIOCB_WRITE | QED_AIOCB_ZERO);
     if (!blockacb) {
