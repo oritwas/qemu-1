@@ -1439,7 +1439,7 @@ static const cmdinfo_t length_cmd = {
 static int info_f(int argc, char **argv)
 {
     BlockDriverInfo bdi;
-    char s1[64], s2[64];
+    char s1[64], s2[64], s3[64];
     int ret;
 
     if (bs->drv && bs->drv->format_name) {
@@ -1456,9 +1456,12 @@ static int info_f(int argc, char **argv)
 
     cvtstr(bdi.cluster_size, s1, sizeof(s1));
     cvtstr(bdi.vm_state_offset, s2, sizeof(s2));
+    cvtstr(bdi.discard_granularity * BDRV_SECTOR_SIZE, s3, sizeof(s3));
 
     printf("cluster size: %s\n", s1);
     printf("vm state offset: %s\n", s2);
+    printf("discard zeroes: %s\n", bdi.discard_zeroes_data ? "yes" : "no");
+    printf("discard granularity: %s\n", s3);
 
     return 0;
 }

@@ -1466,6 +1466,8 @@ static int qcow2_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
     BDRVQcowState *s = bs->opaque;
     bdi->cluster_size = s->cluster_size;
     bdi->vm_state_offset = qcow2_vm_state_offset(s);
+    bdi->discard_zeroes_data = (bs->backing_hd == NULL);
+    bdi->discard_granularity = s->cluster_size / BDRV_SECTOR_SIZE;
     return 0;
 }
 

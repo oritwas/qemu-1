@@ -16,6 +16,10 @@ typedef struct BlockDriverInfo {
     /* offset at which the VM state can be saved (0 if not possible) */
     int64_t vm_state_offset;
     bool is_dirty;
+    /* whether discard is guaranteed to zero bytes */
+    bool discard_zeroes_data;
+    /* discard granularity in sectors */
+    int discard_granularity;
 } BlockDriverInfo;
 
 typedef struct BlockFragInfo {
