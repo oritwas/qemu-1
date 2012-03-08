@@ -74,6 +74,8 @@ static int coroutine_fn bdrv_co_do_writev(BlockDriverState *bs,
     BdrvRequestFlags flags);
 static int coroutine_fn bdrv_co_do_write_zeroes(BlockDriverState *bs,
     int64_t sector_num, int nb_sectors, QEMUIOVector *qiov);
+static int coroutine_fn bdrv_co_do_discard(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors);
 static BlockDriverAIOCB *bdrv_co_aio_rw_vector(BlockDriverState *bs,
                                                int64_t sector_num,
                                                QEMUIOVector *qiov,
@@ -1928,7 +1930,7 @@ static int coroutine_fn bdrv_co_do_write_zeroes(BlockDriverState *bs,
         bdi.discard_granularity &&
         (sector_num & (bdi.discard_granularity - 1)) == 0 &&
         (nb_sectors & (bdi.discard_granularity - 1)) == 0) {
-        return bdrv_co_discard(bs, sector_num, nb_sectors);
+        return bdrv_co_do_discard(bs, sector_num, nb_sectors);
     }
 
     if (qiov) {
@@ -3776,8 +3778,8 @@ static void coroutine_fn bdrv_discard_co_entry(void *opaque)
     rwco->ret = bdrv_co_discard(rwco->bs, rwco->sector_num, rwco->nb_sectors);
 }
 
-int coroutine_fn bdrv_co_discard(BlockDriverState *bs, int64_t sector_num,
-                                 int nb_sectors)
+static int coroutine_fn bdrv_co_do_discard(BlockDriverState *bs,
+                                           int64_t sector_num, int nb_sectors)
 {
     if (!bs->drv) {
         return -ENOMEDIUM;
@@ -3804,6 +3806,12 @@ int coroutine_fn bdrv_co_discard(BlockDriverState *bs, int64_t sector_num,
     } else {
         return 0;
     }
+}
+
+int coroutine_fn bdrv_co_discard(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors)
+{
+    return bdrv_co_do_write_zeroes(bs, sector_num, nb_sectors, NULL);
 }
 
 int bdrv_discard(BlockDriverState *bs, int64_t sector_num, int nb_sectors)
