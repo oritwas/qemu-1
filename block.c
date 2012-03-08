@@ -1929,7 +1929,10 @@ static int coroutine_fn bdrv_co_do_write_zeroes(BlockDriverState *bs,
         bdi.discard_granularity &&
         (sector_num & (bdi.discard_granularity - 1)) == 0 &&
         (nb_sectors & (bdi.discard_granularity - 1)) == 0) {
-        return bdrv_co_do_discard(bs, sector_num, nb_sectors);
+        ret = bdrv_co_do_discard(bs, sector_num, nb_sectors);
+        if (ret != -ENOTSUP) {
+            return ret;
+        }
     }
 
     if (qiov) {
