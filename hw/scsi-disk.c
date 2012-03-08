@@ -41,6 +41,7 @@ do { printf("scsi-disk: " fmt , ## __VA_ARGS__); } while (0)
 #include <scsi/sg.h>
 #endif
 
+#define MAX_UNMAP_BYTES      1048576
 #define SCSI_DMA_BUF_SIZE    131072
 #define SCSI_MAX_INQUIRY_LEN 256
 
@@ -585,6 +586,8 @@ static int scsi_disk_emulate_inquiry(SCSIRequest *req, uint8_t *outbuf)
         }
         case 0xb0: /* block limits */
         {
+            unsigned int max_unmap_sectors =
+                    MAX_UNMAP_BYTES / s->qdev.blocksize;
             unsigned int unmap_sectors =
                     s->qdev.conf.discard_granularity / s->qdev.blocksize;
             unsigned int min_io_size =
@@ -617,6 +620,12 @@ static int scsi_disk_emulate_inquiry(SCSIRequest *req, uint8_t *outbuf)
             outbuf[29] = (unmap_sectors >> 16) & 0xff;
             outbuf[30] = (unmap_sectors >> 8) & 0xff;
             outbuf[31] = unmap_sectors & 0xff;
+
+            /* maximum write same count (bytes 36-43)  */
+            outbuf[40] = (max_unmap_sectors >> 24) & 0xff;
+            outbuf[41] = (max_unmap_sectors >> 16) & 0xff;
+            outbuf[42] = (max_unmap_sectors >> 8) & 0xff;
+            outbuf[43] = max_unmap_sectors & 0xff;
             break;
         }
         case 0xb2: /* thin provisioning */
