@@ -220,51 +220,6 @@ static int do_pwrite(char *buf, int64_t offset, int count, int *total)
     return 1;
 }
 
-typedef struct {
-    int64_t offset;
-    int count;
-    int *total;
-    int ret;
-    bool done;
-} CoWriteZeroes;
-
-static void coroutine_fn co_write_zeroes_entry(void *opaque)
-{
-    CoWriteZeroes *data = opaque;
-
-    data->ret = bdrv_co_write_zeroes(bs, data->offset / BDRV_SECTOR_SIZE,
-                                     data->count / BDRV_SECTOR_SIZE);
-    data->done = true;
-    if (data->ret < 0) {
-        *data->total = data->ret;
-        return;
-    }
-
-    *data->total = data->count;
-}
-
-static int do_co_write_zeroes(int64_t offset, int count, int *total)
-{
-    Coroutine *co;
-    CoWriteZeroes data = {
-        .offset = offset,
-        .count  = count,
-        .total  = total,
-        .done   = false,
-    };
-
-    co = qemu_coroutine_create(co_write_zeroes_entry);
-    qemu_coroutine_enter(co, &data);
-    while (!data.done) {
-        qemu_aio_wait();
-    }
-    if (data.ret < 0) {
-        return data.ret;
-    } else {
-        return 1;
-    }
-}
-
 static int do_load_vmstate(char *buf, int64_t offset, int count, int *total)
 {
     *total = bdrv_load_vmstate(bs, (uint8_t *)buf, offset, count);
@@ -690,7 +645,6 @@ static void write_help(void)
 " -P, -- use different pattern to fill file\n"
 " -C, -- report statistics in a machine parsable format\n"
 " -q, -- quiet mode, do not show I/O statistics\n"
-" -z, -- write zeroes using bdrv_co_write_zeroes\n"
 "\n");
 }
 
@@ -719,7 +673,7 @@ static int write_f(int argc, char **argv)
     int total = 0;
     int pattern = 0xcd;
 
-    while ((c = getopt(argc, argv, "bCpP:qz")) != EOF) {
+    while ((c = getopt(argc, argv, "bCpP:q")) != EOF) {
         switch (c) {
         case 'b':
             bflag = 1;
@@ -798,8 +752,6 @@ static int write_f(int argc, char **argv)
         cnt = do_pwrite(buf, offset, count, &total);
     } else if (bflag) {
         cnt = do_save_vmstate(buf, offset, count, &total);
-    } else if (zflag) {
-        cnt = do_co_write_zeroes(offset, count, &total);
     } else {
         cnt = do_write(buf, offset, count, &total);
     }

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Test aligned and misaligned write zeroes operations.
+# Test aligned and misaligned discard operations.
 #
 # Copyright (C) 2012 Red Hat, Inc.
 #
@@ -50,7 +50,7 @@ echo
 echo "== preparing image =="
 $QEMU_IO -c "write -P 0xa 0x200 0x400" $TEST_IMG | _filter_qemu_io
 $QEMU_IO -c "write -P 0xa 0x20000 0x600" $TEST_IMG | _filter_qemu_io
-$QEMU_IO -c "write -z 0x400 0x20000" $TEST_IMG | _filter_qemu_io
+$QEMU_IO -c "discard 0x400 0x20000" $TEST_IMG | _filter_qemu_io
 
 echo
 echo "== verifying patterns (1) =="
@@ -59,9 +59,9 @@ $QEMU_IO -c "read -P 0x0 0x400 0x20000" $TEST_IMG | _filter_qemu_io
 $QEMU_IO -c "read -P 0xa 0x20400 0x200" $TEST_IMG | _filter_qemu_io
 
 echo
-echo "== rewriting zeroes =="
+echo "== applying discard =="
 $QEMU_IO -c "write -P 0xb 0x10000 0x10000" $TEST_IMG | _filter_qemu_io
-$QEMU_IO -c "write -z 0x10000 0x10000" $TEST_IMG | _filter_qemu_io
+$QEMU_IO -c "discard 0x10000 0x10000" $TEST_IMG | _filter_qemu_io
 
 echo
 echo "== verifying patterns (2) =="

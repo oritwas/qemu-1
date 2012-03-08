@@ -50,7 +50,6 @@
 
 typedef enum {
     BDRV_REQ_COPY_ON_READ = 0x1,
-    BDRV_REQ_ZERO_WRITE   = 0x2,
 } BdrvRequestFlags;
 
 static void bdrv_dev_change_media_cb(BlockDriverState *bs, bool load);
@@ -1980,12 +1979,7 @@ static int coroutine_fn bdrv_co_do_writev(BlockDriverState *bs,
     }
 
     tracked_request_begin(&req, bs, sector_num, nb_sectors, true);
-
-    if (flags & BDRV_REQ_ZERO_WRITE) {
-        ret = bdrv_co_do_write_zeroes(bs, sector_num, nb_sectors, qiov);
-    } else {
-        ret = drv->bdrv_co_writev(bs, sector_num, nb_sectors, qiov);
-    }
+    ret = drv->bdrv_co_writev(bs, sector_num, nb_sectors, qiov);
 
     if (bs->dirty_bitmap) {
         set_dirty_bitmap(bs, sector_num, nb_sectors, 1);
@@ -2006,15 +2000,6 @@ int coroutine_fn bdrv_co_writev(BlockDriverState *bs, int64_t sector_num,
     trace_bdrv_co_writev(bs, sector_num, nb_sectors);
 
     return bdrv_co_do_writev(bs, sector_num, nb_sectors, qiov, 0);
-}
-
-int coroutine_fn bdrv_co_write_zeroes(BlockDriverState *bs,
-                                      int64_t sector_num, int nb_sectors)
-{
-    trace_bdrv_co_write_zeroes(bs, sector_num, nb_sectors);
-
-    return bdrv_co_do_writev(bs, sector_num, nb_sectors, NULL,
-                             BDRV_REQ_ZERO_WRITE);
 }
 
 /**
