@@ -494,6 +494,20 @@ static int64_t nbd_getlength(BlockDriverState *bs)
     return s->size;
 }
 
+static int nbd_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
+{
+    BDRVNBDState *s = bs->opaque;
+
+    if (!(s->nbdflags & NBD_FLAG_SEND_TRIM)) {
+        return 0;
+    }
+
+    /* Only qemu-nbd supports TRIM requests right now.  */
+    bdi->discard_zeroes = true;
+    bdi->discard_granularity = 1;
+    return 0;
+}
+
 static BlockDriver bdrv_nbd = {
     .format_name         = "nbd",
     .instance_size       = sizeof(BDRVNBDState),
@@ -504,6 +518,7 @@ static BlockDriver bdrv_nbd = {
     .bdrv_co_flush_to_os = nbd_co_flush,
     .bdrv_co_discard     = nbd_co_discard,
     .bdrv_getlength      = nbd_getlength,
+    .bdrv_get_info       = nbd_get_info,
     .protocol_name       = "nbd",
 };
 
