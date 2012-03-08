@@ -582,6 +582,14 @@ static coroutine_fn int raw_aio_discard(BlockDriverState *bs,
                        cb, opaque, QEMU_AIO_DISCARD);
 }
 
+static int raw_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
+{
+    bdi->cluster_size = BDRV_SECTOR_SIZE;
+    bdi->discard_zeroes_data = true;
+    bdi->discard_granularity = 1;
+    return 0;
+}
+
 static QEMUOptionParameter raw_create_options[] = {
     {
         .name = BLOCK_OPT_SIZE,
@@ -607,6 +615,7 @@ static BlockDriver bdrv_file = {
 
     .bdrv_truncate = raw_truncate,
     .bdrv_getlength = raw_getlength,
+    .bdrv_get_info = raw_get_info,
     .bdrv_get_allocated_file_size
                         = raw_get_allocated_file_size,
 

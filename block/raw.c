@@ -30,6 +30,11 @@ static int64_t raw_getlength(BlockDriverState *bs)
     return bdrv_getlength(bs->file);
 }
 
+static int raw_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
+{
+    return bdrv_get_info(bs->file, bdi);
+}
+
 static int raw_truncate(BlockDriverState *bs, int64_t offset)
 {
     return bdrv_truncate(bs->file, offset);
@@ -112,6 +117,7 @@ static BlockDriver bdrv_raw = {
 
     .bdrv_probe         = raw_probe,
     .bdrv_getlength     = raw_getlength,
+    .bdrv_get_info      = raw_get_info,
     .bdrv_truncate      = raw_truncate,
 
     .bdrv_is_inserted   = raw_is_inserted,
