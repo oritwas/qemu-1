@@ -121,8 +121,12 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
     IDEState *s = bus->ifs + dev->unit;
     const char *serial;
     DriveInfo *dinfo;
+    int discard_granularity;
 
-    if (dev->conf.discard_granularity && dev->conf.discard_granularity != 512) {
+    discard_granularity = dev->conf.discard_granularity;
+    if (discard_granularity == -1) {
+        dev->conf.discard_granularity = 512;
+    } else if (discard_granularity && discard_granularity != 512) {
         error_report("discard_granularity must be 512 for ide");
         return -1;
     }

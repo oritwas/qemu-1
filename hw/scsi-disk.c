@@ -1689,9 +1689,21 @@ static int scsi_initfn(SCSIDevice *dev)
 {
     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, dev);
     DriveInfo *dinfo;
+    int discard_granularity;
 
     if (!s->qdev.conf.bs) {
         error_report("drive property not set");
+        return -1;
+    }
+
+    discard_granularity = s->qdev.conf.discard_granularity;
+    if (discard_granularity == -1) {
+        s->qdev.conf.discard_granularity = s->qdev.conf.logical_block_size;
+    } else if (discard_granularity < s->qdev.conf.logical_block_size) {
+        error_report("scsi-block: invalid discard_granularity");
+        return -1;
+    } else if (discard_granularity & (discard_granularity - 1)) {
+        error_report("scsi-block: discard_granularity not a power of two");
         return -1;
     }
 
