@@ -1372,45 +1372,25 @@ static BlockDriverAIOCB *bdrv_qed_aio_writev(BlockDriverState *bs,
                          opaque, QED_AIOCB_WRITE);
 }
 
-typedef struct {
-    Coroutine *co;
-    int ret;
-    bool done;
-} QEDWriteZeroesCB;
-
-static void coroutine_fn qed_co_write_zeroes_cb(void *opaque, int ret)
+static BlockDriverAIOCB *bdrv_qed_aio_discard(BlockDriverState *bs,
+                                              int64_t sector_num,
+                                              int nb_sectors,
+                                              BlockDriverCompletionFunc *cb,
+                                              void *opaque)
 {
-    QEDWriteZeroesCB *cb = opaque;
-
-    cb->done = true;
-    cb->ret = ret;
-    if (cb->co) {
-        qemu_coroutine_enter(cb->co, NULL);
-    }
+    /* Zero writes start without an I/O buffer.  If a buffer becomes necessary
+     * then it will be allocated during request processing.
+     */
+    return qed_aio_setup(bs, sector_num, NULL, nb_sectors,
+                         cb, opaque,
+                         QED_AIOCB_WRITE | QED_AIOCB_ZERO);
 }
 
 static int coroutine_fn bdrv_qed_co_write_zeroes(BlockDriverState *bs,
                                                  int64_t sector_num,
                                                  int nb_sectors)
 {
-    BlockDriverAIOCB *blockacb;
-    QEDWriteZeroesCB cb = { .done = false };
-
-    /* Zero writes start without an I/O buffer.  If a buffer becomes necessary
-     * then it will be allocated during request processing.
-     */
-    blockacb = qed_aio_setup(bs, sector_num, NULL, nb_sectors,
-                             qed_co_write_zeroes_cb, &cb,
-                             QED_AIOCB_WRITE | QED_AIOCB_ZERO);
-    if (!blockacb) {
-        return -EIO;
-    }
-    if (!cb.done) {
-        cb.co = qemu_coroutine_self();
-        qemu_coroutine_yield();
-    }
-    assert(cb.done);
-    return cb.ret;
+    return bdrv_co_discard(bs, sector_num, nb_sectors);
 }
 
 static int bdrv_qed_truncate(BlockDriverState *bs, int64_t offset)
@@ -1448,9 +1428,13 @@ static int bdrv_qed_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
 {
     BDRVQEDState *s = bs->opaque;
 
-    memset(bdi, 0, sizeof(*bdi));
     bdi->cluster_size = s->header.cluster_size;
+<<<<<<< HEAD
     bdi->is_dirty = s->header.features & QED_F_NEED_CHECK;
+=======
+    bdi->discard_zeroes_data = true;
+    bdi->discard_granularity = 1;
+>>>>>>> 0878ce0... qed: implement bdrv_aio_discard
     return 0;
 }
 
@@ -1582,6 +1566,7 @@ static BlockDriver bdrv_qed = {
     .bdrv_make_empty          = bdrv_qed_make_empty,
     .bdrv_aio_readv           = bdrv_qed_aio_readv,
     .bdrv_aio_writev          = bdrv_qed_aio_writev,
+    .bdrv_aio_discard         = bdrv_qed_aio_discard,
     .bdrv_co_write_zeroes     = bdrv_qed_co_write_zeroes,
     .bdrv_truncate            = bdrv_qed_truncate,
     .bdrv_getlength           = bdrv_qed_getlength,
