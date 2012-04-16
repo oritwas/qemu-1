@@ -146,6 +146,8 @@ static const char *event_names[BLKDBG_EVENT_MAX] = {
     [BLKDBG_WRITE_AIO]                      = "write_aio",
     [BLKDBG_WRITE_COMPRESSED]               = "write_compressed",
 
+    [BLKDBG_DISCARD]                        = "discard",
+
     [BLKDBG_VMSTATE_LOAD]                   = "vmstate_load",
     [BLKDBG_VMSTATE_SAVE]                   = "vmstate_save",
 
@@ -388,6 +390,19 @@ static BlockDriverAIOCB *blkdebug_aio_writev(BlockDriverState *bs,
     return bdrv_aio_writev(bs->file, sector_num, qiov, nb_sectors, cb, opaque);
 }
 
+static BlockDriverAIOCB *blkdebug_aio_discard(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors,
+    BlockDriverCompletionFunc *cb, void *opaque)
+{
+    BDRVBlkdebugState *s = bs->opaque;
+
+    if (s->vars.inject_errno) {
+        return inject_error(bs, cb, opaque);
+    }
+
+    return bdrv_aio_discard(bs->file, sector_num, nb_sectors, cb, opaque);
+}
+
 static void blkdebug_close(BlockDriverState *bs)
 {
     BDRVBlkdebugState *s = bs->opaque;
@@ -461,6 +476,7 @@ static BlockDriver bdrv_blkdebug = {
 
     .bdrv_aio_readv     = blkdebug_aio_readv,
     .bdrv_aio_writev    = blkdebug_aio_writev,
+    .bdrv_aio_discard   = blkdebug_aio_discard,
 
     .bdrv_debug_event   = blkdebug_debug_event,
 };

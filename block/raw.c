@@ -52,6 +52,7 @@ static int raw_probe(const uint8_t *buf, int buf_size, const char *filename)
 static int coroutine_fn raw_co_discard(BlockDriverState *bs,
                                        int64_t sector_num, int nb_sectors)
 {
+    BLKDBG_EVENT(bs->file, BLKDBG_DISCARD);
     return bdrv_co_discard(bs->file, sector_num, nb_sectors);
 }
 
