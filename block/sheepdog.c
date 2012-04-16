@@ -1095,6 +1095,7 @@ static int sd_open(BlockDriverState *bs, const char *filename, int flags)
     QLIST_INIT(&s->inflight_aio_head);
     QLIST_INIT(&s->pending_aio_head);
     s->fd = -1;
+    s->flush_fd = -1;
 
     memset(vdi, 0, sizeof(vdi));
     memset(tag, 0, sizeof(tag));
@@ -1156,6 +1157,9 @@ static int sd_open(BlockDriverState *bs, const char *filename, int flags)
     return 0;
 out:
     qemu_aio_set_fd_handler(s->fd, NULL, NULL, NULL, NULL);
+    if (s->flush_fd >= 0) {
+        closesocket(s->flush_fd);
+    }
     if (s->fd >= 0) {
         closesocket(s->fd);
     }
@@ -1381,7 +1385,7 @@ static void sd_close(BlockDriverState *bs)
 
     qemu_aio_set_fd_handler(s->fd, NULL, NULL, NULL, NULL);
     closesocket(s->fd);
-    if (s->cache_enabled) {
+    if (s->flush_fd >= 0) {
         closesocket(s->flush_fd);
     }
     g_free(s->addr);
@@ -1719,6 +1723,7 @@ static int coroutine_fn sd_co_flush_to_disk(BlockDriverState *bs)
 
         s->cache_enabled = 0;
         closesocket(s->flush_fd);
+        s->flush_fd = -1;
         return 0;
     }
 
