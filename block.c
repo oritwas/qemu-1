@@ -3516,13 +3516,9 @@ static void coroutine_fn bdrv_flush_co_entry(void *opaque)
     rwco->ret = bdrv_co_flush(rwco->bs);
 }
 
-int coroutine_fn bdrv_co_flush(BlockDriverState *bs)
+static int coroutine_fn bdrv_co_do_flush(BlockDriverState *bs)
 {
     int ret;
-
-    if (!bs || !bdrv_is_inserted(bs) || bdrv_is_read_only(bs)) {
-        return 0;
-    }
 
     /* Write back cached data to the OS even with cache=unsafe */
     if (bs->drv->bdrv_co_flush_to_os) {
@@ -3575,6 +3571,53 @@ int coroutine_fn bdrv_co_flush(BlockDriverState *bs)
      */
 flush_parent:
     return bdrv_co_flush(bs->file);
+}
+
+int coroutine_fn bdrv_co_flush(BlockDriverState *bs)
+{
+    uint64_t my_idx, cur_idx;
+    int ret;
+
+    if (!bs || !bdrv_is_inserted(bs) || bdrv_is_read_only(bs)) {
+        return 0;
+    }
+
+    my_idx = ++bs->flush_next_idx;
+    for (;;) {
+        /* One successful flush started after this bdrv_co_flush?  Fine!  */
+        if ((int64_t) (bs->flush_success_idx - my_idx) >= 0) {
+            return 0;
+        }
+
+        /* One failed flush started after this bdrv_co_flush?  Failure.  */
+        if ((int64_t) (bs->flush_error_idx - my_idx) >= 0) {
+            return bs->flush_last_error;
+        }
+
+        /* At any given time, only one flush shall be in progress.  If one is,
+         * wait for it to finish.  */
+        if (!bs->flushing) {
+            break;
+        }
+        qemu_aio_wait();
+    }
+
+    /* Terminate all flushes invoked so far.  */
+    cur_idx = bs->flush_next_idx;
+    bs->flushing++;
+    ret = bdrv_co_do_flush(bs);
+    bs->flushing--;
+
+    /* Save the return value.  However, another later flush could be started
+     * and completed between we get here.  In this case, just exit.
+     */
+    if (ret < 0 && (int64_t) (bs->flush_error_idx - cur_idx) < 0) {
+        bs->flush_last_error = ret;
+        bs->flush_error_idx = cur_idx;
+    } else if (ret >= 0 && (int64_t) (bs->flush_success_idx - cur_idx) < 0) {
+        bs->flush_success_idx = cur_idx;
+    }
+    return ret;
 }
 
 void bdrv_invalidate_cache(BlockDriverState *bs)

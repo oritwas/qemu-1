@@ -296,6 +296,13 @@ struct BlockDriverState {
     /* number of in-flight copy-on-read requests */
     unsigned int copy_on_read_in_flight;
 
+    /* flush coalescing */
+    uint64_t flush_success_idx;
+    uint64_t flush_error_idx;
+    uint64_t flush_next_idx;
+    int flush_last_error;
+    bool flushing;
+
     /* the time for latest disk I/O */
     int64_t slice_time;
     int64_t slice_start;
