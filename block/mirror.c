@@ -32,13 +32,15 @@ typedef struct MirrorBlockJob {
     RateLimit limit;
     BlockDriverState *target;
     MirrorSyncMode mode;
+    BlockdevOnError on_source_error, on_target_error;
     bool synced;
     bool complete;
     int64_t sector_num;
     uint8_t *buf;
 } MirrorBlockJob;
 
-static int coroutine_fn mirror_iteration(MirrorBlockJob *s)
+static int coroutine_fn mirror_iteration(MirrorBlockJob *s,
+                                         BlockErrorAction *p_action)
 {
     BlockDriverState *source = s->common.bs;
     BlockDriverState *target = s->target;
@@ -60,9 +62,24 @@ static int coroutine_fn mirror_iteration(MirrorBlockJob *s)
     trace_mirror_one_iteration(s, s->sector_num, nb_sectors);
     ret = bdrv_co_readv(source, s->sector_num, nb_sectors, &qiov);
     if (ret < 0) {
-        return ret;
+        *p_action = block_job_error_action(&s->common, source,
+                                           s->on_source_error, true, -ret);
+        s->synced = false;
+        goto fail;
     }
-    return bdrv_co_writev(target, s->sector_num, nb_sectors, &qiov);
+    ret = bdrv_co_writev(target, s->sector_num, nb_sectors, &qiov);
+    if (ret < 0) {
+        *p_action = block_job_error_action(&s->common, target,
+                                           s->on_target_error, false, -ret);
+        s->synced = false;
+        goto fail;
+    }
+    return 0;
+
+fail:
+    /* Try again later.  */
+    bdrv_set_dirty(source, s->sector_num, nb_sectors);
+    return ret;
 }
 
 static void coroutine_fn mirror_run(void *opaque)
@@ -118,8 +135,9 @@ static void coroutine_fn mirror_run(void *opaque)
 
         cnt = bdrv_get_dirty_count(bs);
         if (cnt != 0) {
-            ret = mirror_iteration(s);
-            if (ret < 0) {
+            BlockErrorAction action = BDRV_ACTION_REPORT;
+            ret = mirror_iteration(s, &action);
+            if (ret < 0 && action == BDRV_ACTION_REPORT) {
                 break;
             }
             cnt = bdrv_get_dirty_count(bs);
@@ -193,6 +211,7 @@ static void coroutine_fn mirror_run(void *opaque)
 immediate_exit:
     g_free(s->buf);
     bdrv_set_dirty_tracking(bs, false);
+    bdrv_iostatus_disable(s->target);
     if (s->complete && ret == 0) {
         bdrv_swap(s->target, s->common.bs);
     } else {
@@ -211,6 +230,13 @@ static void mirror_set_speed(BlockJob *job, int64_t speed, Error **errp)
         return;
     }
     ratelimit_set_speed(&s->limit, speed / BDRV_SECTOR_SIZE, SLICE_TIME);
+}
+
+static void mirror_iostatus_reset(BlockJob *job)
+{
+    MirrorBlockJob *s = container_of(job, MirrorBlockJob, common);
+
+    bdrv_iostatus_reset(s->target);
 }
 
 static void mirror_query(BlockJob *job, BlockJobInfo *info)
@@ -249,25 +275,39 @@ static BlockJobType mirror_job_type = {
     .instance_size = sizeof(MirrorBlockJob),
     .job_type      = "mirror",
     .set_speed     = mirror_set_speed,
+    .iostatus_reset= mirror_iostatus_reset,
     .query         = mirror_query,
     .complete      = mirror_complete,
 };
 
 void mirror_start(BlockDriverState *bs, BlockDriverState *target,
                   int64_t speed, MirrorSyncMode mode,
+                  BlockdevOnError on_source_error,
+                  BlockdevOnError on_target_error,
                   BlockDriverCompletionFunc *cb,
                   void *opaque, Error **errp)
 {
     MirrorBlockJob *s;
+
+    if ((on_source_error == BLOCKDEV_ON_ERROR_STOP ||
+         on_source_error == BLOCKDEV_ON_ERROR_ENOSPC) &&
+        !bdrv_iostatus_is_enabled(bs)) {
+        error_set(errp, QERR_INVALID_PARAMETER, "on-source-error");
+        return;
+    }
 
     s = block_job_create(&mirror_job_type, bs, speed, cb, opaque, errp);
     if (!s) {
         return;
     }
 
+    s->on_source_error = on_source_error;
+    s->on_target_error = on_target_error;
     s->target = target;
     s->mode = mode;
     bdrv_set_dirty_tracking(bs, true);
+    bdrv_set_on_error(s->target, on_target_error, on_target_error);
+    bdrv_iostatus_enable(s->target);
     s->common.co = qemu_coroutine_create(mirror_run);
     trace_mirror_start(bs, s, s->common.co, opaque);
     qemu_coroutine_enter(s->common.co, s);
