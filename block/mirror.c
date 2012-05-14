@@ -32,6 +32,8 @@ typedef struct MirrorBlockJob {
     RateLimit limit;
     BlockDriverState *target;
     MirrorSyncMode mode;
+    bool synced;
+    bool complete;
     int64_t sector_num;
     uint8_t *buf;
 } MirrorBlockJob;
@@ -70,7 +72,6 @@ static void coroutine_fn mirror_run(void *opaque)
     int64_t sector_num, end;
     int ret = 0;
     int n;
-    bool synced = false;
 
     if (block_job_is_cancelled(&s->common)) {
         goto immediate_exit;
@@ -135,10 +136,13 @@ static void coroutine_fn mirror_run(void *opaque)
              * I/O and report completion, so that drive-reopen can be
              * used to pivot to the mirroring target.
              */
-            synced = true;
             s->common.offset = end * BDRV_SECTOR_SIZE;
+            if (!s->synced) {
+                block_job_ready(&s->common);
+                s->synced = true;
+            }
 
-            should_complete = block_job_is_cancelled(&s->common);
+            should_complete = block_job_is_cancelled(&s->common) || s->complete;
             if (should_complete) {
                 /* The dirty bitmap is not updated while operations are pending.
                  * If we're about to exit, wait for pending operations before
@@ -155,8 +159,8 @@ static void coroutine_fn mirror_run(void *opaque)
         }
 
         ret = 0;
-        trace_mirror_before_sleep(s, cnt, synced);
-        if (!synced) {
+        trace_mirror_before_sleep(s, cnt, s->synced);
+        if (!s->synced) {
             /* Publish progress */
             s->common.offset = end * BDRV_SECTOR_SIZE - cnt * BLOCK_SIZE;
 
@@ -189,7 +193,11 @@ static void coroutine_fn mirror_run(void *opaque)
 immediate_exit:
     g_free(s->buf);
     bdrv_set_dirty_tracking(bs, false);
-    bdrv_close(s->target);
+    if (s->complete && ret == 0) {
+        bdrv_swap(s->target, s->common.bs);
+    } else {
+        bdrv_close(s->target);
+    }
     bdrv_delete(s->target);
     block_job_completed(&s->common, ret);
 }
@@ -215,11 +223,34 @@ static void mirror_query(BlockJob *job, BlockJobInfo *info)
     info->target->stats = bdrv_query_stats(s->target);
 }
 
+static void mirror_complete(BlockJob *job, Error **errp)
+{
+    MirrorBlockJob *s = container_of(job, MirrorBlockJob, common);
+    int ret;
+
+    ret = bdrv_ensure_backing_file(s->target);
+    if (ret < 0) {
+        char backing_filename[PATH_MAX];
+        bdrv_get_full_backing_filename(s->target, backing_filename,
+                                       sizeof(backing_filename));
+        error_set(errp, QERR_OPEN_FILE_FAILED, backing_filename);
+        return;
+    }
+    if (!s->synced) {
+        error_set(errp, QERR_BLOCK_JOB_NOT_READY, job->bs->device_name);
+        return;
+    }
+
+    s->complete = true;
+    block_job_resume(job);
+}
+
 static BlockJobType mirror_job_type = {
     .instance_size = sizeof(MirrorBlockJob),
     .job_type      = "mirror",
     .set_speed     = mirror_set_speed,
     .query         = mirror_query,
+    .complete      = mirror_complete,
 };
 
 void mirror_start(BlockDriverState *bs, BlockDriverState *target,
