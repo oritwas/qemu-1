@@ -1385,6 +1385,89 @@ static const cmdinfo_t flush_cmd = {
     .oneline    = "flush all in-core file state to disk",
 };
 
+static void aio_sync_help(void)
+{
+    printf(
+"\n"
+" flush all pending writes to disk, asynchronously\n"
+"\n"
+" Example:\n"
+" 'aio_sync\n"
+"\n"
+" Writes into a segment of the currently open file, using a buffer\n"
+" filled with a set pattern (0xcdcdcdcd).\n"
+" -C, -- report statistics in a machine parsable format\n"
+" -q, -- quiet mode, do not show I/O statistics\n"
+"\n");
+}
+
+static int aio_sync_f(int argc, char **argv);
+
+static const cmdinfo_t aio_sync_cmd = {
+    .name       = "aio_sync",
+    .cfunc      = aio_sync_f,
+    .argmin     = 0,
+    .argmax     = -1,
+    .args       = "[-Cq]",
+    .oneline    = "asynchronously flush caches",
+    .help       = aio_sync_help,
+};
+
+static void aio_sync_done(void *opaque, int ret)
+{
+    struct aio_ctx *ctx = opaque;
+    struct timeval t2;
+
+    gettimeofday(&t2, NULL);
+
+
+    if (ret < 0) {
+        printf("aio_sync failed: %s\n", strerror(-ret));
+        goto out;
+    }
+
+    if (ctx->qflag) {
+        goto out;
+    }
+
+    /* Finally, report back -- -C gives a parsable format */
+    t2 = tsub(t2, ctx->t1);
+    print_report("flushed", &t2, 0, 0, 0, 1, ctx->Cflag);
+out:
+    g_free(ctx);
+}
+
+
+static int aio_sync_f(int argc, char **argv)
+{
+    int c;
+    struct aio_ctx *ctx = g_new0(struct aio_ctx, 1);
+
+    while ((c = getopt(argc, argv, "CqP:")) != EOF) {
+        switch (c) {
+        case 'C':
+            ctx->Cflag = 1;
+            break;
+        case 'q':
+            ctx->qflag = 1;
+            break;
+        default:
+            g_free(ctx);
+            return command_usage(&aio_sync_cmd);
+        }
+    }
+
+    if (optind != argc) {
+        g_free(ctx);
+        return command_usage(&aio_sync_cmd);
+    }
+
+    gettimeofday(&ctx->t1, NULL);
+    bdrv_aio_flush(bs, aio_sync_done, ctx);
+    return 0;
+}
+
+
 static int truncate_f(int argc, char **argv)
 {
     int64_t offset;
@@ -1908,6 +1991,7 @@ int main(int argc, char **argv)
     add_command(&multiwrite_cmd);
     add_command(&aio_read_cmd);
     add_command(&aio_write_cmd);
+    add_command(&aio_sync_cmd);
     add_command(&aio_flush_cmd);
     add_command(&flush_cmd);
     add_command(&truncate_cmd);
