@@ -179,6 +179,7 @@ static void smc91c111_pop_tx_fifo_done(smc91c111_state *s)
 static void smc91c111_release_packet(smc91c111_state *s, int packet)
 {
     s->allocated &= ~(1 << packet);
+    qemu_flush_queued_packets(&s->nic->nc);
     if (s->tx_alloc == 0x80)
         smc91c111_tx_alloc(s);
 }
@@ -302,8 +303,10 @@ static void smc91c111_writeb(void *opaque, target_phys_addr_t offset,
             return;
         case 5:
             SET_HIGH(rcr, value);
-            if (s->rcr & RCR_SOFT_RST)
+            if (s->rcr & RCR_SOFT_RST) {
                 smc91c111_reset(&s->busdev.qdev);
+            }
+            qemu_flush_queued_packets(&s->nic->nc);
             return;
         case 10: case 11: /* RPCR */
             /* Ignored */

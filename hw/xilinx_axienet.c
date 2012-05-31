@@ -508,14 +508,21 @@ static void enet_write(void *opaque, target_phys_addr_t addr,
 {
     struct XilinxAXIEnet *s = opaque;
     struct TEMAC *t = &s->TEMAC;
+    uint32_t oldval;
 
     addr >>= 2;
     switch (addr) {
         case R_RCW0:
+            s->rcw[0] = value;
+            break;
+
         case R_RCW1:
-            s->rcw[addr & 1] = value;
-            if ((addr & 1) && value & RCW1_RST) {
+            oldval = s->rcw[1];
+            s->rcw[1] = value;
+            if (value & RCW1_RST) {
                 axienet_rx_reset(s);
+            } else if ((value & RCW1_RX) && !(oldval & RCW1_RX)) {
+                qemu_flush_queued_packets(&s->nic->nc);
             }
             break;
 

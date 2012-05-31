@@ -275,6 +275,7 @@ static void update_rx_interrupt(MilkymistMinimac2State *s)
     } else {
         trace_milkymist_minimac2_lower_irq_rx();
         qemu_irq_lower(s->rx_irq);
+        qemu_flush_queued_packets(&s->nic->nc);
     }
 }
 

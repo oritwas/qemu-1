@@ -199,8 +199,11 @@ static void mcf_fec_enable_rx(mcf_fec_state *s)
 
     mcf_fec_read_bd(&bd, s->rx_descriptor);
     s->rx_enabled = ((bd.flags & FEC_BD_E) != 0);
-    if (!s->rx_enabled)
+    if (s->rx_enabled) {
+        qemu_flush_queued_packets(&s->nic->nc);
+    } else {
         DPRINTF("RX buffer full\n");
+    }
 }
 
 static void mcf_fec_reset(mcf_fec_state *s)

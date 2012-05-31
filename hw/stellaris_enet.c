@@ -166,6 +166,7 @@ static uint64_t stellaris_enet_read(void *opaque, target_phys_addr_t offset,
             if (s->next_packet >= 31)
                 s->next_packet = 0;
             s->np--;
+            qemu_flush_queued_packets(&s->nic->nc);
             DPRINTF("RX done np=%d\n", s->np);
         }
         return val;
@@ -224,6 +225,7 @@ static void stellaris_enet_write(void *opaque, target_phys_addr_t offset,
             s->np = 0;
             stellaris_enet_update(s);
         }
+        qemu_flush_queued_packets(&s->nic->nc);
         break;
     case 0x0c: /* TCTL */
         s->tctl = value;

@@ -138,12 +138,19 @@ eth_write(void *opaque, target_phys_addr_t addr,
         case R_TX_LEN0:
         case R_TX_LEN1:
         case R_TX_GIE0:
-        case R_RX_CTRL0:
         case R_RX_CTRL1:
             D(qemu_log("%s addr=%x val=%x\n", __func__, addr * 4, value));
             s->regs[addr] = value;
             break;
 
+        case R_RX_CTRL0:
+            oldval = s->regs[addr];
+            D(qemu_log("%s addr=%x val=%x\n", __func__, addr * 4, value));
+            s->regs[addr] = value;
+            if ((value & CTRL_S) && !(oldval & CTRL_S)) {
+                qemu_flush_queued_packets(&s->nic->nc);
+            }
+            break;
         default:
             s->regs[addr] = tswap32(value);
             break;

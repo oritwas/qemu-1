@@ -1071,7 +1071,7 @@ static void gem_write(void *opaque, target_phys_addr_t offset, uint64_t val,
         unsigned size)
 {
     GemState *s = (GemState *)opaque;
-    uint32_t readonly;
+    uint32_t readonly, oldval;
 
     DB_PRINT("offset: 0x%04x write: 0x%08x ", offset, (unsigned)val);
     offset >>= 2;
@@ -1086,6 +1086,7 @@ static void gem_write(void *opaque, target_phys_addr_t offset, uint64_t val,
     val &= ~(s->regs_w1c[offset] & val);
 
     /* Copy register write to backing store */
+    oldval = s->regs[offset];
     s->regs[offset] = val | readonly;
 
     /* Handle register write side effects */
@@ -1101,6 +1102,8 @@ static void gem_write(void *opaque, target_phys_addr_t offset, uint64_t val,
         if (!(val & GEM_NWCTRL_RXENA)) {
             /* Reset to start of Q when receive disabled. */
             s->rx_desc_addr = s->regs[GEM_RXQBASE];
+        } else if (!(oldval & GEM_NWCTRL_RXENA)) {
+            qemu_flush_queued_packets(&s->nic->nc);
         }
         break;
 

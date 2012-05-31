@@ -878,6 +878,7 @@ static void pcnet_start(PCNetState *s)
     s->csr[0] &= ~0x0004;       /* clear STOP bit */
     s->csr[0] |= 0x0002;
     pcnet_poll_timer(s);
+    qemu_flush_queued_packets(&s->nic->nc);
 }
 
 static void pcnet_stop(PCNetState *s)
@@ -1355,6 +1356,7 @@ static void pcnet_poll_timer(void *opaque)
 static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value)
 {
     uint16_t val = new_value;
+    uint16_t old_val = s->csr[rap];
 #ifdef PCNET_DEBUG_CSR
     printf("pcnet_csr_writew rap=%d val=0x%04x\n", rap, val);
 #endif
@@ -1428,18 +1430,22 @@ static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value)
     case 76: /* RCVRL */
     case 78: /* XMTRL */
     case 112:
-       if (CSR_STOP(s) || CSR_SPND(s))
-           break;
-       return;
+        if (CSR_STOP(s) || CSR_SPND(s))
+            s->csr[rap] = val;
+        return;
     case 3:
+        s->csr[rap] = val;
         break;
     case 4:
         s->csr[4] &= ~(val & 0x026a);
-        val &= ~0x026a; val |= s->csr[4] & 0x026a;
+        s->csr[4] = (s->csr[4] & 0x026a) | (val & ~0x026a);
         break;
     case 5:
         s->csr[5] &= ~(val & 0x0a90);
-        val &= ~0x0a90; val |= s->csr[5] & 0x0a90;
+        s->csr[5] = (s->csr[5] & 0x0a90) | (val & ~0x0a90);
+        if ((s->csr[5] & 1) == 0 && (old_val & 1) != 0) {
+            qemu_flush_queued_packets(&s->nic->nc);
+        }
         break;
     case 16:
         pcnet_csr_writew(s,1,val);
@@ -1449,11 +1455,10 @@ static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value)
         return;
     case 58:
         pcnet_bcr_writew(s,BCR_SWS,val);
-        break;
+        s->csr[rap] = val;
     default:
         return;
     }
-    s->csr[rap] = val;
 }
 
 static uint32_t pcnet_csr_readw(PCNetState *s, uint32_t rap)

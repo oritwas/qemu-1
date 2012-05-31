@@ -712,6 +712,9 @@ static ru_state_t get_ru_state(EEPRO100State * s)
 static void set_ru_state(EEPRO100State * s, ru_state_t state)
 {
     s->mem[SCBStatus] = (s->mem[SCBStatus] & ~BITS(5, 2)) + (state << 2);
+    if (state == ru_ready) {
+        qemu_flush_queued_packets(&s->nic->nc);
+    }
 }
 
 static void dump_statistics(EEPRO100State * s)

@@ -330,6 +330,7 @@ static void do_stop_timer(dp8393xState *s)
 static void do_receiver_enable(dp8393xState *s)
 {
     s->regs[SONIC_CR] &= ~SONIC_CR_RXDIS;
+    qemu_flush_queued_packets(&s->nic->nc);
 }
 
 static void do_receiver_disable(dp8393xState *s)
@@ -465,8 +466,9 @@ static void do_command(dp8393xState *s, uint16_t command)
         do_transmit_packets(s);
     if (command & SONIC_CR_RXDIS)
         do_receiver_disable(s);
-    if (command & SONIC_CR_RXEN)
+    if (command & SONIC_CR_RXEN) {
         do_receiver_enable(s);
+    }
     if (command & SONIC_CR_STP)
         do_stop_timer(s);
     if (command & SONIC_CR_ST)
@@ -560,6 +562,7 @@ static void write_register(dp8393xState *s, int reg, uint16_t val)
             s->regs[reg] &= ~val;
             if (val & SONIC_ISR_RBE) {
                 do_read_rra(s);
+                qemu_flush_queued_packets(&s->nic->nc);
             }
             dp8393x_update_irq(s);
             break;

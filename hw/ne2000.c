@@ -284,6 +284,7 @@ static void ne2000_ioport_write(void *opaque, uint32_t addr, uint32_t val)
 #endif
     if (addr == E8390_CMD) {
         /* control register */
+        uint32_t oldval = s->cmd;
         s->cmd = val;
         if (!(val & E8390_STOP)) { /* START bit makes no sense on RTL8029... */
             s->isr &= ~ENISR_RESET;
@@ -308,6 +309,9 @@ static void ne2000_ioport_write(void *opaque, uint32_t addr, uint32_t val)
                 s->cmd &= ~E8390_TRANS;
                 ne2000_update_irq(s);
             }
+            if (oldval & E8390_STOP) {
+                qemu_flush_queued_packets(&s->nic->nc);
+            }
         }
     } else {
         page = s->cmd >> 6;
@@ -315,9 +319,11 @@ static void ne2000_ioport_write(void *opaque, uint32_t addr, uint32_t val)
         switch(offset) {
         case EN0_STARTPG:
             s->start = val << 8;
+            qemu_flush_queued_packets(&s->nic->nc);
             break;
         case EN0_STOPPG:
             s->stop = val << 8;
+            qemu_flush_queued_packets(&s->nic->nc);
             break;
         case EN0_BOUNDARY:
             s->boundary = val;

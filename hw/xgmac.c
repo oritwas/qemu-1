@@ -275,9 +275,17 @@ static void enet_write(void *opaque, target_phys_addr_t addr,
                        uint64_t value, unsigned size)
 {
     struct XgmacState *s = opaque;
+    uint32_T oldval;
 
     addr >>= 2;
     switch (addr) {
+    case DMA_CONTROL:
+        oldval = s->regs[DMA_CONTROL];
+        s->regs[DMA_CONTROL] = value;
+        if (!(oldval & DMA_CONTROL_SR) && (value & DMA_CONTROL_SR)) {
+            qemu_flush_queued_packets(&s->nic->nc);
+        }
+        break;
     case DMA_BUS_MODE:
         s->regs[DMA_BUS_MODE] = value & ~0x1;
         break;

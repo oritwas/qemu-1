@@ -131,6 +131,16 @@ static uint64_t mipsnet_ioport_read(void *opaque, target_phys_addr_t addr,
         if (s->rx_count) {
             s->rx_count--;
             ret = s->rx_buffer[s->rx_read++];
+
+            /* Strictly speaking, we could let a new packet enter
+             * as soon as we read a single byte from the data buffer.
+             * In practice, that brings no benefit and the new packet
+             * would not be accessible until the FIFO exhausts _this_
+             * packet.  So wait until rx_count drops to 0.
+             */
+            if (s->rx_count == 0) {
+                qemu_flush_queued_packets(&s->nic->nc);
+            }
         }
         break;
     /* Reads as zero. */
@@ -166,6 +176,9 @@ static void mipsnet_ioport_write(void *opaque, target_phys_addr_t addr,
             /* ACK testbit interrupt, flag was cleared on read. */
         }
         s->busy = !!s->intctl;
+        if (!s->busy) {
+            qemu_flush_queued_packets(&s->nic->nc);
+        }
         mipsnet_update_irq(s);
         break;
     case MIPSNET_TX_DATA_BUFFER:

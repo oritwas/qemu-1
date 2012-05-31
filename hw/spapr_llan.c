@@ -390,6 +390,7 @@ static target_ulong h_add_logical_lan_buffer(CPUPPCState *env,
     vio_stq(sdev, dev->buf_list + dev->add_buf_ptr, buf);
 
     dev->rx_bufs++;
+    qemu_flush_queued_packets(&s->nic->nc);
 
     dprintf("h_add_logical_lan_buffer():  Added buf  ptr=%d  rx_bufs=%d"
             " bd=0x%016llx\n", dev->add_buf_ptr, dev->rx_bufs,
