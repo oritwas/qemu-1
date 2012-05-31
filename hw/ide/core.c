@@ -77,19 +77,14 @@ static void put_le16(uint16_t *p, unsigned int v)
     *p = cpu_to_le16(v);
 }
 
-static void ide_identify(IDEState *s)
+static void ide_fill_identify(IDEState *s)
 {
+    IDEDevice *dev = s->unit ? s->bus->slave : s->bus->master;
     uint16_t *p;
     unsigned int oldsize;
-    IDEDevice *dev = s->unit ? s->bus->slave : s->bus->master;
 
-    if (s->identify_set) {
-	memcpy(s->io_buffer, s->identify_data, sizeof(s->identify_data));
-	return;
-    }
-
-    memset(s->io_buffer, 0, 512);
-    p = (uint16_t *)s->io_buffer;
+    memset(s->identify_data, 0, 512);
+    p = (uint16_t *)s->identify_data;
     put_le16(p + 0, 0x0040);
     put_le16(p + 1, s->cylinders);
     put_le16(p + 3, s->heads);
@@ -181,22 +176,15 @@ static void ide_identify(IDEState *s)
     if (dev && dev->conf.discard_granularity) {
         put_le16(p + 169, 1); /* TRIM support */
     }
-
-    memcpy(s->identify_data, p, sizeof(s->identify_data));
     s->identify_set = 1;
 }
 
-static void ide_atapi_identify(IDEState *s)
+static void ide_atapi_fill_identify(IDEState *s)
 {
     uint16_t *p;
 
-    if (s->identify_set) {
-	memcpy(s->io_buffer, s->identify_data, sizeof(s->identify_data));
-	return;
-    }
-
-    memset(s->io_buffer, 0, 512);
-    p = (uint16_t *)s->io_buffer;
+    memset(s->identify_data, 0, 512);
+    p = (uint16_t *)s->identify_data;
     /* Removable CDROM, 50us response, 12 byte packets */
     put_le16(p + 0, (2 << 14) | (5 << 8) | (1 << 7) | (2 << 5) | (0 << 0));
     padstr((char *)(p + 10), s->drive_serial_str, 20); /* serial number */
@@ -235,19 +223,15 @@ static void ide_atapi_identify(IDEState *s)
 #ifdef USE_DMA_CDROM
     put_le16(p + 88, 0x3f | (1 << 13)); /* udma5 set and supported */
 #endif
-    memcpy(s->identify_data, p, sizeof(s->identify_data));
     s->identify_set = 1;
 }
 
-static void ide_cfata_identify(IDEState *s)
+static void ide_cfata_fill_identify(IDEState *s)
 {
     uint16_t *p;
     uint32_t cur_sec;
 
     p = (uint16_t *) s->identify_data;
-    if (s->identify_set)
-        goto fill_buffer;
-
     memset(p, 0, sizeof(s->identify_data));
 
     cur_sec = s->cylinders * s->heads * s->sectors;
@@ -300,9 +284,24 @@ static void ide_cfata_identify(IDEState *s)
     put_le16(p + 161, 0x8001);			/* CF command set */
 
     s->identify_set = 1;
+}
 
-fill_buffer:
-    memcpy(s->io_buffer, p, sizeof(s->identify_data));
+static void ide_identify(IDEState *s)
+{
+    if (!s->identify_set) {
+        switch (s->drive_kind) {
+        case IDE_CD:
+            ide_atapi_fill_identify(s);
+            break;
+        case IDE_CFATA:
+            ide_cfata_fill_identify(s);
+            break;
+        default:
+            ide_fill_identify(s);
+            break;
+        }
+    }
+    memcpy(s->io_buffer, s->identify_data, sizeof(s->identify_data));
 }
 
 static void ide_set_signature(IDEState *s)
@@ -1084,10 +1083,7 @@ void ide_exec_cmd(IDEBus *bus, uint32_t val)
         break;
     case WIN_IDENTIFY:
         if (s->bs && s->drive_kind != IDE_CD) {
-            if (s->drive_kind != IDE_CFATA)
-                ide_identify(s);
-            else
-                ide_cfata_identify(s);
+            ide_identify(s);
             s->status = READY_STAT | SEEK_STAT;
             ide_transfer_start(s, s->io_buffer, 512, ide_transfer_stop);
         } else {
@@ -1322,7 +1318,7 @@ void ide_exec_cmd(IDEBus *bus, uint32_t val)
         break;
         /* ATAPI commands */
     case WIN_PIDENTIFY:
-        ide_atapi_identify(s);
+        ide_identify(s);
         s->status = READY_STAT | SEEK_STAT;
         ide_transfer_start(s, s->io_buffer, 512, ide_transfer_stop);
         ide_set_irq(s->bus);
@@ -2160,6 +2156,13 @@ static int transfer_end_table_idx(EndTransferFunc *fn)
     return -1;
 }
 
+static void ide_drive_pre_save(void *opaque)
+{
+    IDEState *s = opaque;
+
+    ide_identify(s);
+}
+
 static int ide_drive_post_load(void *opaque, int version_id)
 {
     IDEState *s = opaque;
@@ -2287,6 +2290,7 @@ const VMStateDescription vmstate_ide_drive = {
     .version_id = 3,
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
+    .pre_save = ide_drive_pre_save,
     .post_load = ide_drive_post_load,
     .fields      = (VMStateField []) {
         VMSTATE_INT32(mult_sectors, IDEState),
