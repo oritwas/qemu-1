@@ -1840,6 +1840,10 @@ static void ide_reset(IDEState *s)
         s->mult_sectors = 0;
     else
         s->mult_sectors = MAX_MULT_SECTORS;
+
+    /* identify data */
+    s->identify_set = 0;
+
     /* ide regs */
     s->feature = 0;
     s->error = 0;
