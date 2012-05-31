@@ -349,6 +349,7 @@ struct IDEState {
     int mult_sectors;
     int identify_set;
     uint8_t identify_data[512];
+    uint8_t transfer_mode;
     int drive_serial;
     char drive_serial_str[21];
     char drive_model_str[41];

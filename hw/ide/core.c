@@ -77,6 +77,56 @@ static void put_le16(uint16_t *p, unsigned int v)
     *p = cpu_to_le16(v);
 }
 
+static void ide_fill_identify_transfer_mode(IDEState *s)
+{
+    uint8_t val = s->transfer_mode & 0x07;
+    uint16_t *identify_data = (uint16_t *)s->identify_data;
+    switch (s->transfer_mode >> 3) {
+    case 0x00: /* pio default */
+    case 0x01: /* pio mode */
+        put_le16(identify_data + 62,0x07);
+        put_le16(identify_data + 63,0x07);
+        put_le16(identify_data + 88,0x3f);
+        break;
+    case 0x02: /* single word dma mode*/
+        put_le16(identify_data + 62,0x07 | (1 << (val + 8)));
+        put_le16(identify_data + 63,0x07);
+        put_le16(identify_data + 88,0x3f);
+        break;
+    case 0x04: /* mdma mode */
+        put_le16(identify_data + 62,0x07);
+        put_le16(identify_data + 63,0x07 | (1 << (val + 8)));
+        put_le16(identify_data + 88,0x3f);
+        break;
+    case 0x08: /* udma mode */
+        put_le16(identify_data + 62,0x07);
+        put_le16(identify_data + 63,0x07);
+        put_le16(identify_data + 88,0x3f | (1 << (val + 8)));
+        break;
+    default:
+        abort();
+    }
+    put_le16(identify_data + 64,0x03);
+}
+
+static int ide_retrieve_transfer_mode(IDEState *s)
+{
+    uint16_t *identify_data = (uint16_t *)s->identify_data;
+    if (identify_data[62] & 0xFF00) {
+        /* Single word DMA mode */
+        return (0x02 << 3) | (ffs(identify_data[62] >> 8) - 1);
+    }
+    if (identify_data[63] & 0xFF00) {
+        /* MDMA mode */
+        return (0x04 << 3) | (ffs(identify_data[63] >> 8) - 1);
+    }
+    if (identify_data[88] & 0xFF00) {
+        /* UDMA mode */
+        return (0x08 << 3) | (ffs(identify_data[88] >> 8) - 1);
+    }
+    return 0x00;
+}
+
 static void ide_fill_identify(IDEState *s)
 {
     IDEDevice *dev = s->unit ? s->bus->slave : s->bus->master;
@@ -115,9 +165,6 @@ static void ide_fill_identify(IDEState *s)
         put_le16(p + 59, 0x100 | s->mult_sectors);
     put_le16(p + 60, s->nb_sectors);
     put_le16(p + 61, s->nb_sectors >> 16);
-    put_le16(p + 62, 0x07); /* single word dma0-2 supported */
-    put_le16(p + 63, 0x07); /* mdma0-2 supported */
-    put_le16(p + 64, 0x03); /* pio3-4 supported */
     put_le16(p + 65, 120);
     put_le16(p + 66, 120);
     put_le16(p + 67, 120);
@@ -157,7 +204,6 @@ static void ide_fill_identify(IDEState *s)
     } else {
         put_le16(p + 87, (1 << 14) | 0);
     }
-    put_le16(p + 88, 0x3f | (1 << 13)); /* udma5 set and supported */
     put_le16(p + 93, 1 | (1 << 14) | 0x2000);
     put_le16(p + 100, s->nb_sectors);
     put_le16(p + 101, s->nb_sectors >> 16);
@@ -176,6 +222,7 @@ static void ide_fill_identify(IDEState *s)
     if (dev && dev->conf.discard_granularity) {
         put_le16(p + 169, 1); /* TRIM support */
     }
+    ide_fill_identify_transfer_mode(s);
     s->identify_set = 1;
 }
 
@@ -196,9 +243,6 @@ static void ide_atapi_fill_identify(IDEState *s)
     put_le16(p + 48, 1); /* dword I/O (XXX: should not be set on CDROM) */
     put_le16(p + 49, 1 << 9 | 1 << 8); /* DMA and LBA supported */
     put_le16(p + 53, 7); /* words 64-70, 54-58, 88 valid */
-    put_le16(p + 62, 7);  /* single word dma0-2 supported */
-    put_le16(p + 63, 7);  /* mdma0-2 supported */
-    put_le16(p + 64, 3); /* pio3-4 supported */
     put_le16(p + 65, 0xb4); /* minimum DMA multiword tx cycle time */
     put_le16(p + 66, 0xb4); /* recommended DMA multiword tx cycle time */
     put_le16(p + 67, 0x12c); /* minimum PIO cycle time without flow control */
@@ -214,7 +258,7 @@ static void ide_atapi_fill_identify(IDEState *s)
     }
 
     put_le16(p + 80, 0x1e); /* support up to ATA/ATAPI-4 */
-    put_le16(p + 88, 0x3f | (1 << 13)); /* udma5 set and supported */
+    ide_fill_identify_transfer_mode(s);
     s->identify_set = 1;
 }
 
@@ -1223,15 +1267,13 @@ void ide_exec_cmd(IDEBus *bus, uint32_t val)
         switch(s->feature) {
         case 0x02: /* write cache enable */
             bdrv_set_enable_write_cache(s->bs, true);
-            identify_data = (uint16_t *)s->identify_data;
-            put_le16(identify_data + 85, (1 << 14) | (1 << 5) | 1);
+            s->identify_set = 0;
             s->status = READY_STAT | SEEK_STAT;
             ide_set_irq(s->bus);
             break;
         case 0x82: /* write cache disable */
             bdrv_set_enable_write_cache(s->bs, false);
-            identify_data = (uint16_t *)s->identify_data;
-            put_le16(identify_data + 85, (1 << 14) | 1);
+            s->identify_set = 0;
             ide_flush_cache(s);
             break;
         case 0xcc: /* reverting to power-on defaults enable */
@@ -1250,35 +1292,27 @@ void ide_exec_cmd(IDEBus *bus, uint32_t val)
             ide_set_irq(s->bus);
             break;
         case 0x03: { /* set transfer mode */
-		uint8_t val = s->nsector & 0x07;
-		identify_data = (uint16_t *)s->identify_data;
-
-		switch (s->nsector >> 3) {
-		case 0x00: /* pio default */
-		case 0x01: /* pio mode */
-			put_le16(identify_data + 62,0x07);
-			put_le16(identify_data + 63,0x07);
-			put_le16(identify_data + 88,0x3f);
-			break;
-                case 0x02: /* sigle word dma mode*/
-			put_le16(identify_data + 62,0x07 | (1 << (val + 8)));
-			put_le16(identify_data + 63,0x07);
-			put_le16(identify_data + 88,0x3f);
-			break;
-		case 0x04: /* mdma mode */
-			put_le16(identify_data + 62,0x07);
-			put_le16(identify_data + 63,0x07 | (1 << (val + 8)));
-			put_le16(identify_data + 88,0x3f);
-			break;
-		case 0x08: /* udma mode */
-			put_le16(identify_data + 62,0x07);
-			put_le16(identify_data + 63,0x07);
-			put_le16(identify_data + 88,0x3f | (1 << (val + 8)));
-			break;
-		default:
-			goto abort_cmd;
-		}
+            if (s->drive_kind == IDE_CFATA) {
+                /* This used to be implemented in the same way as for HD/CD,
+                 * but CFATA IDENTIFY information is all different for the
+                 * transfer mode.  For now, succeed silently.
+                 */
+                s->status = READY_STAT | SEEK_STAT;
+                ide_set_irq(s->bus);
+                break;
+            }
+            switch (s->nsector >> 3) {
+            case 0x00: /* pio default */
+            case 0x01: /* pio mode */
+            case 0x02: /* single word dma mode*/
+            case 0x04: /* mdma mode */
+            case 0x08: /* udma mode */
+                s->transfer_mode = s->nsector;
+            default:
+                goto abort_cmd;
+            }
             s->status = READY_STAT | SEEK_STAT;
+            s->identify_set = 0;
             ide_set_irq(s->bus);
             break;
 	}
@@ -1835,6 +1869,7 @@ static void ide_reset(IDEState *s)
 
     /* identify data */
     s->identify_set = 0;
+    s->transfer_mode (0x08 << 3) | 5; /* UDMA */
 
     /* ide regs */
     s->feature = 0;
@@ -2171,6 +2206,7 @@ static int ide_drive_post_load(void *opaque, int version_id)
     }
     if (s->identify_set) {
         bdrv_set_enable_write_cache(s->bs, !!(s->identify_data[85] & (1 << 5)));
+        s->transfer_mode = ide_retrieve_transfer_mode(s);
     }
     return 0;
 }
