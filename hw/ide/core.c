@@ -194,16 +194,10 @@ static void ide_atapi_fill_identify(IDEState *s)
     padstr((char *)(p + 23), s->version, 8); /* firmware version */
     padstr((char *)(p + 27), s->drive_model_str, 40); /* model */
     put_le16(p + 48, 1); /* dword I/O (XXX: should not be set on CDROM) */
-#ifdef USE_DMA_CDROM
     put_le16(p + 49, 1 << 9 | 1 << 8); /* DMA and LBA supported */
     put_le16(p + 53, 7); /* words 64-70, 54-58, 88 valid */
     put_le16(p + 62, 7);  /* single word dma0-2 supported */
     put_le16(p + 63, 7);  /* mdma0-2 supported */
-#else
-    put_le16(p + 49, 1 << 9); /* LBA supported, no DMA */
-    put_le16(p + 53, 3); /* words 64-70, 54-58 valid */
-    put_le16(p + 63, 0x103); /* DMA modes XXX: may be incorrect */
-#endif
     put_le16(p + 64, 3); /* pio3-4 supported */
     put_le16(p + 65, 0xb4); /* minimum DMA multiword tx cycle time */
     put_le16(p + 66, 0xb4); /* recommended DMA multiword tx cycle time */
@@ -220,9 +214,7 @@ static void ide_atapi_fill_identify(IDEState *s)
     }
 
     put_le16(p + 80, 0x1e); /* support up to ATA/ATAPI-4 */
-#ifdef USE_DMA_CDROM
     put_le16(p + 88, 0x3f | (1 << 13)); /* udma5 set and supported */
-#endif
     s->identify_set = 1;
 }
 

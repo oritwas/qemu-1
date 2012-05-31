@@ -18,7 +18,6 @@
 //#define DEBUG_IDE
 //#define DEBUG_IDE_ATAPI
 //#define DEBUG_AIO
-#define USE_DMA_CDROM
 
 typedef struct IDEBus IDEBus;
 typedef struct IDEDevice IDEDevice;
