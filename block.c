@@ -2259,7 +2259,13 @@ const char *bdrv_get_device_name(BlockDriverState *bs)
 
 int bdrv_get_flags(BlockDriverState *bs)
 {
-    return bs->open_flags;
+    int flags = bs->open_flags;
+    if (bs->enable_write_cache) {
+        flags |= BDRV_O_CACHE_WB;
+    } else {
+        flags &= ~BDRV_O_CACHE_WB;
+    }
+    return flags;
 }
 
 void bdrv_flush_all(void)
