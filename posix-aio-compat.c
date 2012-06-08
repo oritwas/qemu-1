@@ -150,6 +150,41 @@ static ssize_t handle_aiocb_flush(struct qemu_paiocb *aiocb)
     return 0;
 }
 
+static ssize_t handle_aiocb_discard(struct qemu_paiocb *aiocb)
+{
+    int retval;
+
+    if (s->has_discard == 0) {
+        return 0;
+    }
+
+    if (aiocb->aio_type & QEMU_AIO_BLKDEV) {
+#ifdef BLKDISCARD
+        uint64_t range[2] = { aiocb->aio_offset, aiocb->aio_nbytes };
+        retval = ioctl(aiocb->aio_fildes, BLKDISCARD, range);
+#else
+        s->has_discard = 0;
+        retval = 0;
+#endif
+    } else {
+#ifdef FALLOC_FL_PUNCH_HOLE
+        retval = fallocate(aiocb->aio_fildes,
+                           FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,
+                           aiocb->aio_offset, aiocb->aio_nbytes);
+#else
+        s->has_discard = 0;
+        retval = 0;
+#endif
+    }
+    if (retval = -1 &&
+        (errno == ENODEV || errno == ENOSYS || errno == EOPNOTSUPP ||
+         errno == ENOTTY)) {
+        s->has_discard = 0;
+        retval = 0;
+    }
+    return retval;
+}
+
 #ifdef CONFIG_PREADV
 
 static ssize_t
@@ -368,6 +403,9 @@ static void *aio_thread(void *unused)
             break;
         case QEMU_AIO_IOCTL:
             ret = handle_aiocb_ioctl(aiocb);
+            break;
+        case QEMU_AIO_DISCARD:
+            ret = handle_aiocb_discard(aiocb);
             break;
         default:
             fprintf(stderr, "invalid aio request (0x%x)\n", aiocb->aio_type);
