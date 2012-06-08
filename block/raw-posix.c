@@ -463,6 +463,42 @@ static ssize_t handle_aiocb_flush(RawPosixAIOData *aiocb)
     return 0;
 }
 
+static ssize_t handle_aiocb_discard(RawPosixAIOData *aiocb)
+{
+    BDRVRawState *s = aiocb->bs->opaque;
+    int retval;
+
+    if (s->has_discard == 0) {
+        return 0;
+    }
+
+    if (aiocb->aio_type & QEMU_AIO_BLKDEV) {
+#ifdef BLKDISCARD
+        uint64_t range[2] = { aiocb->aio_offset, aiocb->aio_nbytes };
+        retval = ioctl(aiocb->aio_fildes, BLKDISCARD, range);
+#else
+        s->has_discard = 0;
+        retval = 0;
+#endif
+    } else {
+#ifdef FALLOC_FL_PUNCH_HOLE
+        retval = fallocate(aiocb->aio_fildes,
+                           FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,
+                           aiocb->aio_offset, aiocb->aio_nbytes);
+#else
+        s->has_discard = 0;
+        retval = 0;
+#endif
+    }
+    if (retval == -1 &&
+        (errno == ENODEV || errno == ENOSYS || errno == EOPNOTSUPP ||
+         errno == ENOTTY)) {
+        s->has_discard = 0;
+        retval = 0;
+    }
+    return retval;
+}
+
 #ifdef CONFIG_PREADV
 
 static bool preadv_present = true;
@@ -661,6 +697,9 @@ static int aio_worker(void *arg)
         break;
     case QEMU_AIO_IOCTL:
         ret = handle_aiocb_ioctl(aiocb);
+        break;
+    case QEMU_AIO_DISCARD:
+        ret = handle_aiocb_discard(aiocb);
         break;
     default:
         fprintf(stderr, "invalid aio request (0x%x)\n", aiocb->aio_type);
@@ -1078,29 +1117,14 @@ static int coroutine_fn raw_co_is_allocated(BlockDriverState *bs,
     }
 }
 
-static coroutine_fn int raw_co_discard(BlockDriverState *bs,
-    int64_t sector_num, int nb_sectors)
+static coroutine_fn BlockDriverAIOCB *raw_aio_discard(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors,
+    BlockDriverCompletionFunc *cb, void *opaque)
 {
     BDRVRawState *s = bs->opaque;
-    int retval;
 
-    if (s->has_discard == 0) {
-        return 0;
-    }
-
-#ifdef FALLOC_FL_PUNCH_HOLE
-    retval = fallocate(s->fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,
-                       sector_num << 9, (int64_t)nb_sectors << 9);
-    if (retval = -1 &&
-        (errno == ENODEV || errno == ENOSYS || errno == EOPNOTSUPP)) {
-        s->has_discard = 0;
-        retval = 0;
-    }
-#else
-    retval = 0;
-    s->has_discard = 0;
-#endif
-    return retval;
+    return paio_submit(bs, s->fd, sector_num, NULL, nb_sectors,
+                       cb, opaque, QEMU_AIO_DISCARD);
 }
 
 static QEMUOptionParameter raw_create_options[] = {
@@ -1123,12 +1147,12 @@ static BlockDriver bdrv_file = {
     .bdrv_reopen_abort = raw_reopen_abort,
     .bdrv_close = raw_close,
     .bdrv_create = raw_create,
-    .bdrv_co_discard = raw_co_discard,
     .bdrv_co_is_allocated = raw_co_is_allocated,
 
     .bdrv_aio_readv = raw_aio_readv,
     .bdrv_aio_writev = raw_aio_writev,
     .bdrv_aio_flush = raw_aio_flush,
+    .bdrv_aio_discard = raw_aio_discard,
 
     .bdrv_truncate = raw_truncate,
     .bdrv_getlength = raw_getlength,
@@ -1329,34 +1353,17 @@ static BlockDriverAIOCB *hdev_aio_ioctl(BlockDriverState *bs,
     return paio_ioctl(bs, s->fd, req, buf, cb, opaque);
 }
 
-static coroutine_fn int hdev_co_discard(BlockDriverState *bs,
-    int64_t sector_num, int nb_sectors)
+static coroutine_fn BlockDriverAIOCB *hdev_aio_discard(BlockDriverState *bs,
+    int64_t sector_num, int nb_sectors,
+    BlockDriverCompletionFunc *cb, void *opaque)
 {
     BDRVRawState *s = bs->opaque;
-    int retval;
 
-    if (s->has_discard == 0) {
-        return 0;
+    if (fd_open(bs) < 0) {
+        return NULL;
     }
-    retval = fd_open(bs);
-    if (retval < 0) {
-        return retval;
-    }
-
-#ifdef BLKDISCARD
-    {
-        uint64_t range[2] = { sector_num * 512, (uint64_t)nb_sectors * 512 };
-        retval = ioctl(s->fd, BLKDISCARD, range);
-    }
-    if (retval == -1 && (errno == ENOTTY || errno == EOPNOTSUPP)) {
-        s->has_discard = 0;
-        retval = 0;
-    }
-#else
-    retval = 0;
-    s->has_discard = 0;
-#endif
-    return retval;
+    return paio_submit(bs, s->fd, sector_num, NULL, nb_sectors,
+                       cb, opaque, QEMU_AIO_DISCARD|QEMU_AIO_BLKDEV);
 }
 
 #elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
@@ -1424,11 +1431,10 @@ static BlockDriver bdrv_host_device = {
     .create_options     = raw_create_options,
     .bdrv_has_zero_init = hdev_has_zero_init,
 
-    .bdrv_co_discard    = hdev_co_discard,
-
     .bdrv_aio_readv	= raw_aio_readv,
     .bdrv_aio_writev	= raw_aio_writev,
     .bdrv_aio_flush	= raw_aio_flush,
+    .bdrv_aio_discard   = hdev_aio_discard,
 
     .bdrv_truncate      = raw_truncate,
     .bdrv_getlength	= raw_getlength,
