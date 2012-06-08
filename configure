@@ -140,7 +140,6 @@ linux_aio=""
 cap_ng=""
 attr=""
 libattr=""
-xfs=""
 
 vhost_net="no"
 kvm="no"
@@ -801,10 +800,6 @@ for opt do
   --disable-rbd) rbd="no"
   ;;
   --enable-rbd) rbd="yes"
-  ;;
-  --disable-xfsctl) xfs="no"
-  ;;
-  --enable-xfsctl) xfs="yes"
   ;;
   --disable-smartcard) smartcard="no"
   ;;
@@ -1750,28 +1745,6 @@ EOF
       feature_not_found "uuid"
     fi
     uuid=no
-  fi
-fi
-
-##########################################
-# xfsctl() probe, used for raw-posix
-if test "$xfs" != "no" ; then
-  cat > $TMPC << EOF
-#include <stddef.h>  /* NULL */
-#include <xfs/xfs.h>
-int main(void)
-{
-    xfsctl(NULL, 0, 0, NULL);
-    return 0;
-}
-EOF
-  if compile_prog "" "" ; then
-    xfs="yes"
-  else
-    if test "$xfs" = "yes" ; then
-      feature_not_found "xfs"
-    fi
-    xfs=no
   fi
 fi
 
@@ -3022,7 +2995,6 @@ echo "Trace backend     $trace_backend"
 echo "Trace output file $trace_file-<pid>"
 echo "spice support     $spice"
 echo "rbd support       $rbd"
-echo "xfsctl support    $xfs"
 echo "nss used          $smartcard_nss"
 echo "usb net redir     $usb_redir"
 echo "OpenGL support    $opengl"
@@ -3174,9 +3146,6 @@ if test "$fnmatch" = "yes" ; then
 fi
 if test "$uuid" = "yes" ; then
   echo "CONFIG_UUID=y" >> $config_host_mak
-fi
-if test "$xfs" = "yes" ; then
-  echo "CONFIG_XFS=y" >> $config_host_mak
 fi
 qemu_version=`head $source_path/VERSION`
 echo "VERSION=$qemu_version" >>$config_host_mak
