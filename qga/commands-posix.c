@@ -38,8 +38,11 @@ extern char **environ;
 #include <sys/socket.h>
 #include <net/if.h>
 
-#if defined(__linux__) && defined(FIFREEZE)
+#ifdef FIFREEZE
 #define CONFIG_FSFREEZE
+#endif
+#ifdef FITRIM
+#define CONFIG_FSTRIM
 #endif
 #endif
 
@@ -525,6 +528,60 @@ static void guest_fsfreeze_cleanup(void)
 }
 #endif /* CONFIG_FSFREEZE */
 
+#if defined(CONFIG_FSTRIM)
+/*
+ * Walk list of mounted file systems in the guest, and trim them.
+ */
+int64_t qmp_guest_fstrim(Error **err)
+{
+    int ret = 0;
+    FsMountList mounts;
+    struct FsMount *mount;
+    int fd;
+    char err_msg[512];
+
+    slog("guest-fstrim called");
+
+    QTAILQ_INIT(&mounts);
+    ret = build_fs_mount_list(&mounts);
+    if (ret < 0) {
+        return ret;
+    }
+
+    QTAILQ_FOREACH(mount, &mounts, next) {
+        fd = qemu_open(mount->dirname, O_RDONLY);
+        if (fd == -1) {
+            sprintf(err_msg, "failed to open %s, %s", mount->dirname,
+                    strerror(errno));
+            error_set(err, QERR_QGA_COMMAND_FAILED, err_msg);
+            goto error;
+        }
+
+        /* we try to cull filesytems we know won't work in advance, but other
+         * filesytems may not implement fstrim for less obvious reasons.
+         * these will report EOPNOTSUPP. we simply ignore these errors.
+         * any other error means an unexpected error, so return it in those
+         * cases.
+         */
+        ret = ioctl(fd, FITRIM);
+        if (ret == -1) {
+            if (errno != EOPNOTSUPP) {
+                sprintf(err_msg, "failed to trim %s, %s",
+                        mount->dirname, strerror(errno));
+                error_set(err, QERR_QGA_COMMAND_FAILED, err_msg);
+                close(fd);
+                goto error;
+            }
+        }
+        close(fd);
+    }
+
+error:
+    free_fs_mount_list(&mounts);
+}
+#endif /* CONFIG_FSTRIM */
+
+
 #define LINUX_SYS_STATE_FILE "/sys/power/state"
 #define SUSPEND_SUPPORTED 0
 #define SUSPEND_NOT_SUPPORTED 1
@@ -913,6 +970,15 @@ int64_t qmp_guest_fsfreeze_freeze(Error **err)
 }
 
 int64_t qmp_guest_fsfreeze_thaw(Error **err)
+{
+    error_set(err, QERR_UNSUPPORTED);
+
+    return 0;
+}
+#endif /* CONFIG_FSFREEZE */
+
+#if defined(CONFIG_FSTRIM)
+int64_t qmp_guest_fstrim(Error **err)
 {
     error_set(err, QERR_UNSUPPORTED);
 
