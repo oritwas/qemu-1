@@ -208,6 +208,8 @@ static void scsi_read_complete(void * opaque, int ret)
         } else if (r->req.cmd.buf[0] == MODE_SENSE ||
                    r->req.cmd.buf[0] == MODE_SENSE_10) {
             scsi_patch_mode_sense(s, &r->req, r->buf, len);
+        } else if (r->req.cmd.buf[0] == INQUIRY) {
+            scsi_patch_inquiry(s, &r->req, r->buf, len);
         }
         bdrv_set_buffer_alignment(s->conf.bs, s->blocksize);
 

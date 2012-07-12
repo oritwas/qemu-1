@@ -235,6 +235,8 @@ int scsi_sense_valid(SCSISense sense);
 int scsi_build_sense(uint8_t *in_buf, int in_len,
                      uint8_t *buf, int len, bool fixed);
 
+void scsi_patch_inquiry(SCSIDevice *dev, SCSIRequest *req,
+                        uint8_t *buf, int len);
 void scsi_patch_mode_sense(SCSIDevice *dev, SCSIRequest *req,
                            uint8_t *buf, int len);
 

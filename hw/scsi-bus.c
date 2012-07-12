@@ -418,11 +418,12 @@ static bool scsi_target_emulate_inquiry(SCSITargetReq *r)
         r->buf[2] = 5; /* Version */
         r->buf[3] = 2 | 0x10; /* HiSup, response data format */
         r->buf[4] = r->len - 5; /* Additional Length = (Len - 1) - 4 */
-        r->buf[7] = 0x10 | (r->req.bus->info->tcq ? 0x02 : 0); /* Sync, TCQ.  */
         memcpy(&r->buf[8], "QEMU    ", 8);
         memcpy(&r->buf[16], "QEMU TARGET     ", 16);
         pstrcpy((char *) &r->buf[32], 4, qemu_get_version());
     }
+    scsi_patch_inquiry(NULL, &r->req, r->buf, r->len);
+
     return true;
 }
 
@@ -558,6 +559,32 @@ void scsi_patch_mode_sense(SCSIDevice *d, SCSIRequest *req,
             mode_sense_ctl_page(d, &buf[ofs], page_len, page_control);
         }
         ofs += page_len;
+    }
+}
+
+void scsi_patch_inquiry(SCSIDevice *d, SCSIRequest *req,
+                        uint8_t *buf, int inlen)
+{
+    /* Ignore VPD requests.  */
+    if ((req->cmd.buf[1] & 0x1) || req->cmd.buf[2] != 0) {
+        return;
+    }
+
+    /* Get additional length, must have at least eight bytes.  */
+    if (inlen < 5) {
+        return;
+    }
+
+    inlen = MIN(inlen, buf[4] + 5);
+    if (inlen < 8) {
+        return;
+    }
+
+    /* Patch TCQ bit.  */
+    if (buf[0] != TYPE_NO_LUN) {
+        buf[7] &= ~0x12;
+        buf[7] |= (req->bus->info->tcq ? 0x02 : 0);
+        buf[7] |= (req->bus->info->transport == SCSI_TRANSPORT_SPI ? 0x10 : 0);
     }
 }
 
