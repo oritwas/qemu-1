@@ -495,6 +495,72 @@ static const struct SCSIReqOps reqops_target_command = {
     .get_buf      = scsi_target_get_buf,
 };
 
+static void mode_sense_ctl_page(SCSIDevice *d, uint8_t *p, int page_len,
+                                int page_control)
+{
+    SCSIBus *bus = DO_UPCAST(SCSIBus, qbus, d->qdev.parent_bus);
+
+    assert(page_len >= 10);
+
+    /* Clear bits that are modified below.  */
+    p[1] &= 0x0f; /* Queue algorithm modifier */
+    p[2] &= 0xcf; /* UA_INTLCK_CTL */
+
+    if (page_control != 1) {
+        p[1] |= bus->info->tcq ? 0x10 : 0; /* Queue algorithm modifier */
+        p[2] |= bus->info->autosense ? 0 : 0x20; /* UA_INTLCK_CTL: 00b or 10b */
+    }
+}
+
+/* The mode sense control page includes some data that depends
+ * on the HBA, modify the output so that it is correct.
+ *
+ * TODO: we might want to verify that MODE SELECT commands do
+ * not touch these bits.
+ */
+void scsi_patch_mode_sense(SCSIDevice *d, SCSIRequest *req,
+                           uint8_t *buf, int inlen)
+{
+    int page_control = req->cmd.buf[2] >> 6;
+    int len, ofs;
+
+    if (req->cmd.buf[0] == MODE_SENSE) {
+        len = buf[0] + 1;
+        ofs = 4 + buf[3];
+    } else {
+        len = (buf[0] << 8) + buf[1] + 2;
+        ofs = (buf[6] << 8) + buf[7] + 8;
+    }
+
+    len = MIN(len, inlen);
+    while (ofs < len) {
+        int page, subpage, page_len;
+        page = buf[ofs] & 0x3f;
+        if (buf[ofs] & 0x40) {
+            if (ofs + 4 > len) {
+                break;
+            }
+            subpage = buf[ofs + 1];
+            page_len = (buf[ofs + 2] << 8) + buf[ofs + 3];
+            ofs += 4;
+        } else {
+            if (ofs + 2 > len) {
+                break;
+            }
+            subpage = 0;
+            page_len = buf[ofs + 1];
+            ofs += 2;
+        }
+        if (ofs + page_len > len) {
+            break;
+        }
+        if (page == MODE_PAGE_CONTROL && subpage == 0) {
+            mode_sense_ctl_page(d, &buf[ofs], page_len, page_control);
+        }
+        ofs += page_len;
+    }
+}
+
 
 SCSIRequest *scsi_req_alloc(const SCSIReqOps *reqops, SCSIDevice *d,
                             uint32_t tag, uint32_t lun, void *hba_private)

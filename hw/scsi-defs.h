@@ -219,6 +219,7 @@
 #define MODE_PAGE_HD_GEOMETRY                 0x04
 #define MODE_PAGE_FLEXIBLE_DISK_GEOMETRY      0x05
 #define MODE_PAGE_CACHING                     0x08
+#define MODE_PAGE_CONTROL                     0x0a
 #define MODE_PAGE_AUDIO_CTL                   0x0e
 #define MODE_PAGE_POWER                       0x1a
 #define MODE_PAGE_FAULT_FAIL                  0x1c

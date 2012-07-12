@@ -678,6 +678,7 @@ static void virtio_scsi_hot_unplug(SCSIBus *bus, SCSIDevice *dev)
 
 static struct SCSIBusInfo virtio_scsi_scsi_info = {
     .tcq = true,
+    .autosense = true,
     .transport = SCSI_TRANSPORT_VIRTIO,
 
     .max_channel = VIRTIO_SCSI_MAX_CHANNEL,

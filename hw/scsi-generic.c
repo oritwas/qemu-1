@@ -205,6 +205,9 @@ static void scsi_read_complete(void * opaque, int ret)
                    (r->req.cmd.buf[1] & 31) == SAI_READ_CAPACITY_16) {
             s->blocksize = ldl_be_p(&r->buf[8]);
             s->max_lba = ldq_be_p(&r->buf[0]);
+        } else if (r->req.cmd.buf[0] == MODE_SENSE ||
+                   r->req.cmd.buf[0] == MODE_SENSE_10) {
+            scsi_patch_mode_sense(s, &r->req, r->buf, len);
         }
         bdrv_set_buffer_alignment(s->conf.bs, s->blocksize);
 

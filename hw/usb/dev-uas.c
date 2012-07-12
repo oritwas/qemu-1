@@ -478,6 +478,7 @@ static void usb_uas_scsi_request_cancelled(SCSIRequest *r)
 
 static const struct SCSIBusInfo usb_uas_scsi_info = {
     .tcq = true,
+    .autosense = true,
     .transport = SCSI_TRANSPORT_USB,
     .max_target = 0,
     .max_lun = 255,

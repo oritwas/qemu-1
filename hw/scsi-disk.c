@@ -956,6 +956,7 @@ static int mode_sense_page(SCSIDiskState *s, int page, uint8_t **p_outbuf,
         [MODE_PAGE_HD_GEOMETRY]            = (1 << TYPE_DISK),
         [MODE_PAGE_FLEXIBLE_DISK_GEOMETRY] = (1 << TYPE_DISK),
         [MODE_PAGE_CACHING]                = (1 << TYPE_DISK) | (1 << TYPE_ROM),
+        [MODE_PAGE_CONTROL]                = (1 << TYPE_DISK) | (1 << TYPE_ROM),
         [MODE_PAGE_R_W_ERROR]              = (1 << TYPE_DISK) | (1 << TYPE_ROM),
         [MODE_PAGE_AUDIO_CTL]              = (1 << TYPE_ROM),
         [MODE_PAGE_CAPABILITIES]           = (1 << TYPE_ROM),
@@ -1054,6 +1055,14 @@ static int mode_sense_page(SCSIDiskState *s, int page, uint8_t **p_outbuf,
             bdrv_enable_write_cache(s->qdev.conf.bs)) {
             p[0] = 4; /* WCE */
         }
+        break;
+
+    case MODE_PAGE_CONTROL:
+        length = 0xa;
+        if (page_control == 1) { /* Changeable Values */
+            break;
+        }
+        p[1] = 0x10; /* Queue algorithm modifier = 1 */
         break;
 
     case MODE_PAGE_R_W_ERROR:
@@ -1205,6 +1214,7 @@ static int scsi_disk_emulate_mode_sense(SCSIDiskReq *r, uint8_t *outbuf)
         outbuf[0] = ((buflen - 2) >> 8) & 0xff;
         outbuf[1] = (buflen - 2) & 0xff;
     }
+    scsi_patch_mode_sense(&s->qdev, &r->req, outbuf, buflen);
     return buflen;
 }
 

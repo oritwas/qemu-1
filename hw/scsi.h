@@ -137,7 +137,7 @@ struct SCSIReqOps {
 };
 
 struct SCSIBusInfo {
-    bool tcq;
+    bool tcq, autosense;
     enum SCSITransport transport;
     int max_channel, max_target, max_lun;
 
@@ -234,6 +234,9 @@ extern const struct SCSISense sense_code_WRITE_PROTECTED;
 int scsi_sense_valid(SCSISense sense);
 int scsi_build_sense(uint8_t *in_buf, int in_len,
                      uint8_t *buf, int len, bool fixed);
+
+void scsi_patch_mode_sense(SCSIDevice *dev, SCSIRequest *req,
+                           uint8_t *buf, int len);
 
 SCSIRequest *scsi_req_alloc(const SCSIReqOps *reqops, SCSIDevice *d,
                             uint32_t tag, uint32_t lun, void *hba_private);
