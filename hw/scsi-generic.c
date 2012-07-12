@@ -46,6 +46,7 @@ do { fprintf(stderr, "scsi-generic: " fmt , ## __VA_ARGS__); } while (0)
 #define SG_ERR_DID_NO_CONNECT  0x01
 #define SG_ERR_DID_BUS_BUSY    0x02
 #define SG_ERR_DID_TIME_OUT    0x03
+#define SG_ERR_DID_ABORT       0x05
 
 #ifndef MAX_UINT
 #define MAX_UINT ((unsigned int)-1)
@@ -114,10 +115,12 @@ static void scsi_command_complete(void *opaque, int ret)
             break;
         }
     } else {
-        if (r->io_header.host_status == SG_ERR_DID_NO_CONNECT ||
-            r->io_header.host_status == SG_ERR_DID_BUS_BUSY ||
-            r->io_header.host_status == SG_ERR_DID_TIME_OUT ||
-            (r->io_header.driver_status & SG_ERR_DRIVER_TIMEOUT)) {
+        if (r->io_header.host_status == SG_ERR_DID_ABORT) {
+            status = TASK_ABORTED;
+	} else if (r->io_header.host_status == SG_ERR_DID_NO_CONNECT ||
+                   r->io_header.host_status == SG_ERR_DID_BUS_BUSY ||
+                   r->io_header.host_status == SG_ERR_DID_TIME_OUT ||
+                   (r->io_header.driver_status & SG_ERR_DRIVER_TIMEOUT)) {
             status = BUSY;
             BADF("Driver Timeout\n");
         } else if (r->io_header.host_status) {
