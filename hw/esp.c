@@ -642,6 +642,7 @@ void esp_init(target_phys_addr_t espaddr, int it_shift,
 
 static const struct SCSIBusInfo esp_scsi_info = {
     .tcq = false,
+    .transport = SCSI_TRANSPORT_SPI,
     .max_target = ESP_MAX_DEVS,
     .max_lun = 7,
 

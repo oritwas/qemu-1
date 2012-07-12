@@ -2078,6 +2078,7 @@ static void megasas_scsi_uninit(PCIDevice *d)
 
 static const struct SCSIBusInfo megasas_scsi_info = {
     .tcq = true,
+    .transport = SCSI_TRANSPORT_SAS,
     .max_target = MFI_MAX_LD,
     .max_lun = 255,
 

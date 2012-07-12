@@ -23,6 +23,17 @@ enum SCSIXferMode {
     SCSI_XFER_TO_DEV,    /*  WRITE, MODE_SELECT, ...         */
 };
 
+enum SCSITransport {
+    SCSI_TRANSPORT_SPI,  /*  SCSI parallel interface */
+    SCSI_TRANSPORT_SAS,
+    SCSI_TRANSPORT_USB,
+    SCSI_TRANSPORT_SRP,
+    SCSI_TRANSPORT_FCP,
+    SCSI_TRANSPORT_ATAPI,
+    SCSI_TRANSPORT_ISCSI,
+    SCSI_TRANSPORT_VIRTIO,
+};
+
 typedef struct SCSISense {
     uint8_t key;
     uint8_t asc;
@@ -126,8 +137,10 @@ struct SCSIReqOps {
 };
 
 struct SCSIBusInfo {
-    int tcq;
+    bool tcq;
+    enum SCSITransport transport;
     int max_channel, max_target, max_lun;
+
     void (*transfer_data)(SCSIRequest *req, uint32_t arg);
     void (*complete)(SCSIRequest *req, uint32_t arg, size_t resid);
     void (*cancel)(SCSIRequest *req);

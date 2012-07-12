@@ -526,6 +526,7 @@ static void *usb_msd_load_request(QEMUFile *f, SCSIRequest *req)
 
 static const struct SCSIBusInfo usb_msd_scsi_info = {
     .tcq = false,
+    .transport = SCSI_TRANSPORT_USB,
     .max_target = 0,
     .max_lun = 0,
 

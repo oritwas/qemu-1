@@ -887,6 +887,8 @@ static int vscsi_do_crq(struct VIOsPAPRDevice *dev, uint8_t *crq_data)
 
 static const struct SCSIBusInfo vscsi_scsi_info = {
     .tcq = true,
+    .transport = SCSI_TRANSPORT_SRP,
+
     .max_channel = 7, /* logical unit addressing format */
     .max_target = 63,
     .max_lun = 31,

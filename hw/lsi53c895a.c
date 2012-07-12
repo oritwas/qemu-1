@@ -2081,6 +2081,7 @@ static void lsi_scsi_uninit(PCIDevice *d)
 
 static const struct SCSIBusInfo lsi_scsi_info = {
     .tcq = true,
+    .transport = SCSI_TRANSPORT_SPI,
     .max_target = LSI_MAX_DEVS,
     .max_lun = 0,  /* LUN support is buggy */
 
