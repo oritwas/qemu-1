@@ -506,6 +506,7 @@ static void mode_sense_ctl_page(SCSIDevice *d, uint8_t *p, int page_len,
     /* Clear bits that are modified below.  */
     p[1] &= 0x0f; /* Queue algorithm modifier */
     p[2] &= 0xcf; /* UA_INTLCK_CTL */
+    p[3] &= 0xbf; /* TAS */
 
     if (page_control != 1) {
         p[1] |= bus->info->tcq ? 0x10 : 0; /* Queue algorithm modifier */
@@ -1685,26 +1686,22 @@ void scsi_req_complete(SCSIRequest *req, int status)
 
     scsi_req_ref(req);
     scsi_req_dequeue(req);
-    req->bus->info->complete(req, req->status, req->resid);
+
+    /* Since we report TAS=0, hide the TASK ABORTED status that might
+     * result from passthrough.
+     */
+    if (status == TASK_ABORTED) {
+        req->bus->info->cancel(req);
+    } else {
+        req->bus->info->complete(req, req->status, req->resid);
+    }
     scsi_req_unref(req);
 }
 
 void scsi_req_cancel(SCSIRequest *req)
 {
     trace_scsi_req_cancel(req->dev->id, req->lun, req->tag);
-    if (!req->enqueued) {
-        return;
-    }
-    scsi_req_ref(req);
-    scsi_req_dequeue(req);
-    req->io_canceled = true;
-    if (req->ops->cancel_io) {
-        req->ops->cancel_io(req);
-    }
-    if (req->bus->info->cancel) {
-        req->bus->info->cancel(req);
-    }
-    scsi_req_unref(req);
+    scsi_req_abort(req, TASK_ABORTED);
 }
 
 void scsi_req_abort(SCSIRequest *req, int status)
