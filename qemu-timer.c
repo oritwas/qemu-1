@@ -30,6 +30,7 @@
 #include "hw/hw.h"
 
 #include "qemu-timer.h"
+#include "qapi/qapi-visit-core.h"
 
 #ifdef _WIN32
 #include <mmsystem.h>
@@ -60,6 +61,34 @@ struct QEMUTimer {
     QEMUTimer *next;
     int scale;
 };
+
+void visit_type_QEMUTimer(Visitor *v, QEMUTimer **obj, const char *name,
+                          Error **errp)
+{
+    int64_t expire_time, expire_time_cpy;
+
+    if (error_is_set(errp)) {
+        return;
+    }
+    if (!obj || !*obj) {
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE, name ? name : NULL,
+                  "non-NULL QEMUTimer");
+        return;
+    }
+    expire_time = expire_time_cpy = qemu_timer_expire_time_ns(*obj);
+    visit_start_struct(v, NULL, "QEMUTimer", name, 0, errp);
+    visit_type_int64(v, &expire_time, "expire_time", errp);
+    visit_end_struct(v, errp);
+
+    /* if we're modifying a QEMUTimer, re-arm/delete accordingly */
+    if (expire_time != expire_time_cpy) {
+        if (expire_time != -1) {
+            qemu_mod_timer_ns(*obj, expire_time);
+        } else {
+            qemu_del_timer(*obj);
+        }
+    }
+}
 
 struct qemu_alarm_timer {
     char const *name;

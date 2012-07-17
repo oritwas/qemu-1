@@ -4,6 +4,7 @@
 #include "qemu-common.h"
 #include "main-loop.h"
 #include "notify.h"
+#include "qapi/qapi-visit-core.h"
 
 #ifdef __FreeBSD__
 #include <sys/param.h>
@@ -66,6 +67,9 @@ int init_timer_alarm(void);
 int64_t cpu_get_ticks(void);
 void cpu_enable_ticks(void);
 void cpu_disable_ticks(void);
+
+void visit_type_QEMUTimer(Visitor *v, QEMUTimer **obj, const char *name,
+                          Error **errp);
 
 static inline QEMUTimer *qemu_new_timer_ns(QEMUClock *clock, QEMUTimerCB *cb,
                                            void *opaque)
