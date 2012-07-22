@@ -18,6 +18,7 @@
 #include "qemu-timer.h"
 #include "qemu-char.h"
 #include "buffered_file.h"
+#include "qemu-thread.h"
 
 //#define DEBUG_BUFFERED_FILE
 
@@ -31,7 +32,8 @@ typedef struct QEMUFileBuffered
     uint8_t *buffer;
     size_t buffer_size;
     size_t buffer_capacity;
-    QEMUTimer *timer;
+    QemuThread thread;
+    bool complete;
 } QEMUFileBuffered;
 
 #ifdef DEBUG_BUFFERED_FILE
@@ -96,14 +98,14 @@ static ssize_t buffered_flush(QEMUFileBuffered *s)
     return offset;
 }
 
-static void buffered_restart(QEMUFileBuffered *s)
+static bool buffered_restart(QEMUFileBuffered *s)
 {
     ssize_t error;
 
     error = qemu_file_get_error(s->file);
     if (error) {
         DPRINTF("flush when error, bailing: %s\n", strerror(-error));
-        return;
+        return false;
     }
 
     DPRINTF("unfreezing output\n");
@@ -111,14 +113,17 @@ static void buffered_restart(QEMUFileBuffered *s)
     error = buffered_flush(s);
     if (error < 0) {
         DPRINTF("buffered flush error. bailing: %s\n", strerror(-error));
-        return;
+        return false;
     }
 
     DPRINTF("file is ready\n");
-    if (!qemu_file_rate_limit(s->file)) {
-        DPRINTF("notifying client\n");
-        migrate_fd_put_ready(s->migration_state);
+    if (qemu_file_rate_limit(s->file)) {
+        return true;
     }
+
+    DPRINTF("notifying client\n");
+    migrate_fd_put_ready(s->migration_state);
+    return false;
 }
 
 static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, int size)
@@ -184,11 +189,7 @@ static int buffered_close(void *opaque)
     if (ret >= 0) {
         ret = ret2;
     }
-    qemu_del_timer(s->timer);
-    qemu_free_timer(s->timer);
-    g_free(s->buffer);
-    g_free(s);
-
+    s->complete = true;
     return ret;
 }
 
@@ -243,22 +244,39 @@ static int64_t buffered_get_rate_limit(void *opaque)
     return s->xfer_limit;
 }
 
-static void buffered_rate_tick(void *opaque)
+/* 100ms  xfer_limit is the limit that we should write each 100ms */
+#define BUFFER_DELAY 100
+
+static void *buffered_file_thread(void *opaque)
 {
     QEMUFileBuffered *s = opaque;
+    int64_t expire_time = qemu_get_clock_ms(rt_clock) + BUFFER_DELAY;
 
-    if (qemu_file_get_error(s->file)) {
-        buffered_close(s);
-        return;
+    while (true) {
+        int64_t current_time = qemu_get_clock_ms(rt_clock);
+        bool wait;
+
+        if (s->complete) {
+            break;
+        }
+        if (current_time >= expire_time) {
+            s->bytes_xfer = 0;
+            expire_time = current_time + BUFFER_DELAY;
+        }
+        if (s->freeze_output) {
+            continue;
+        }
+        qemu_mutex_lock_iothread();
+        wait = buffered_restart(s);
+        qemu_mutex_unlock_iothread();
+        if (wait) {
+            /* usleep expects microseconds */
+            g_usleep((expire_time - current_time)*1000);
+        }
     }
-
-    qemu_mod_timer(s->timer, qemu_get_clock_ms(rt_clock) + 100);
-
-    s->bytes_xfer = 0;
-    if (s->freeze_output)
-        return;
-
-    buffered_restart(s);
+    g_free(s->buffer);
+    g_free(s);
+    return NULL;
 }
 
 static const QEMUFileOps buffered_file_ops = {
@@ -278,12 +296,12 @@ QEMUFile *qemu_fopen_ops_buffered(MigrationState *migration_state)
 
     s->migration_state = migration_state;
     s->xfer_limit = migration_state->bandwidth_limit / 10;
+    s->complete = false;
 
     s->file = qemu_fopen_ops(s, &buffered_file_ops);
 
-    s->timer = qemu_new_timer_ms(rt_clock, buffered_rate_tick, s);
-
-    qemu_mod_timer(s->timer, qemu_get_clock_ms(rt_clock) + 100);
+    qemu_thread_create(&s->thread, buffered_file_thread, s,
+                       QEMU_THREAD_DETACHED);
 
     return s->file;
 }
