@@ -237,10 +237,7 @@ static void *buffered_file_thread(void *opaque)
             s->bytes_xfer = 0;
             expire_time = current_time + BUFFER_DELAY;
         }
-        qemu_mutex_lock_iothread();
-        wait = buffered_restart(s);
-        qemu_mutex_unlock_iothread();
-        if (wait) {
+        if (buffered_restart(s)) {
             /* usleep expects microseconds */
             g_usleep((expire_time - current_time)*1000);
         }
