@@ -62,6 +62,7 @@ class QEMUMonitorProtocol:
     def __json_read(self, only_event=False):
         while True:
             data = self.__sockfile.readline()
+            print(data)
             if not data:
                 return
             resp = json.loads(data)
@@ -106,6 +107,7 @@ class QEMUMonitorProtocol:
                 been closed
         """
         try:
+            print(json.dumps(qmp_cmd))
             self.__sock.sendall(json.dumps(qmp_cmd))
         except socket.error, err:
             if err[0] == errno.EPIPE:
