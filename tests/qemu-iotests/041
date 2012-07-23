@@ -292,6 +292,27 @@ class TestMirrorNoBacking(ImageMirroringTestCase):
         self.assertTrue(self.compare_images(test_img, target_img),
                         'target image does not match source after mirroring')
 
+    def test_large_cluster(self):
+        self.assert_no_active_mirrors()
+
+        # qemu-img create fails if the image is not there
+        qemu_img('create', '-f', iotests.imgfmt, '-o', 'size=%d'
+                        %(TestMirrorNoBacking.image_len), target_backing_img)
+        qemu_img('create', '-f', iotests.imgfmt, '-o', 'cluster_size=%d,backing_file=%s'
+                        % (TestMirrorNoBacking.image_len, target_backing_img), target_img)
+        os.remove(target_backing_img)
+
+        result = self.vm.qmp('drive-mirror', device='drive0', sync='full',
+                             mode='existing', target=target_img)
+        self.assert_qmp(result, 'return', {})
+
+        self.complete_and_wait()
+        result = self.vm.qmp('query-block')
+        self.assert_qmp(result, 'return[0]/inserted/file', target_img)
+        self.vm.shutdown()
+        self.assertTrue(self.compare_images(test_img, target_img),
+                        'target image does not match source after mirroring')
+
 class TestReadErrors(ImageMirroringTestCase):
     image_len = 2 * 1024 * 1024 # MB
 
