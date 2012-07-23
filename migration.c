@@ -321,8 +321,10 @@ void migrate_fd_put_ready(MigrationState *s)
     int ret;
     static bool first_time = true;
 
+    qemu_mutex_lock_iothread();
     if (s->state != MIG_STATE_ACTIVE) {
         DPRINTF("put_ready returning because of non-active state\n");
+        qemu_mutex_unlock_iothread();
         return;
     }
     if (first_time) {
@@ -332,6 +334,7 @@ void migrate_fd_put_ready(MigrationState *s)
         if (ret < 0) {
             DPRINTF("failed, %d\n", ret);
             migrate_fd_error(s);
+            qemu_mutex_unlock_iothread();
             return;
         }
     }
@@ -367,6 +370,8 @@ void migrate_fd_put_ready(MigrationState *s)
             }
         }
     }
+    qemu_mutex_unlock_iothread();
+
 }
 
 static void migrate_fd_cancel(MigrationState *s)
