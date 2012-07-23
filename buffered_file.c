@@ -130,12 +130,6 @@ static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, in
     QEMUFileBuffered *s = opaque;
     ssize_t error;
 
-    if (pos == 0 && size == 0) {
-        DPRINTF("unfreezing output\n");
-        buffered_restart(s);
-        return 0;
-    }
-
     DPRINTF("putting %d bytes at %" PRId64 "\n", size, pos);
 
     error = qemu_file_get_error(s->file);
@@ -294,6 +288,7 @@ void qemu_fopen_ops_buffered(MigrationState *migration_state)
 
     s = g_malloc0(sizeof(*s));
 
+    socket_set_block(migration_state->fd);
     s->migration_state = migration_state;
     s->xfer_limit = migration_state->bandwidth_limit / 10;
     s->migration_state->complete = false;
