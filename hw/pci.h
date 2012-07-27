@@ -187,44 +187,50 @@ typedef int (*MSIVectorUseNotifier)(PCIDevice *dev, unsigned int vector,
                                       MSIMessage msg);
 typedef void (*MSIVectorReleaseNotifier)(PCIDevice *dev, unsigned int vector);
 
-struct PCIDevice {
-    DeviceState qdev;
+QIDL_DECLARE(PCIDevice) {
+    DeviceState qdev q_immutable;
 
     /* PCI config space */
-    uint8_t *config;
+    uint8_t *config \
+        q_size((pci_is_express(*obj) ? \
+                       PCIE_CONFIG_SPACE_SIZE : PCI_CONFIG_SPACE_SIZE));
 
     /* Used to enable config checks on load. Note that writable bits are
      * never checked even if set in cmask. */
-    uint8_t *cmask;
+    uint8_t *cmask q_immutable;
 
     /* Used to implement R/W bytes */
-    uint8_t *wmask;
+    uint8_t *wmask q_immutable;
 
     /* Used to implement RW1C(Write 1 to Clear) bytes */
-    uint8_t *w1cmask;
+    uint8_t *w1cmask q_immutable;
 
     /* Used to allocate config space for capabilities. */
-    uint8_t *used;
+    uint8_t *used q_immutable;
 
     /* the following fields are read only */
-    PCIBus *bus;
-    int32_t devfn;
-    char name[64];
-    PCIIORegion io_regions[PCI_NUM_REGIONS];
-    DMAContext *dma;
+    PCIBus *bus q_immutable;
+    int32_t devfn q_immutable q_property("addr", -1);
+    char name[64] q_immutable;
+    PCIIORegion io_regions[PCI_NUM_REGIONS] q_immutable;
+    DMAContext *dma q_immutable;
 
     /* do not access the following fields */
-    PCIConfigReadFunc *config_read;
-    PCIConfigWriteFunc *config_write;
+    PCIConfigReadFunc *config_read q_immutable;
+    PCIConfigWriteFunc *config_write q_immutable;
 
     /* IRQ objects for the INTA-INTD pins.  */
-    qemu_irq *irq;
+    qemu_irq *irq q_immutable;
 
     /* Current IRQ levels.  Used internally by the generic PCI code.  */
     uint8_t irq_state;
 
     /* Capability bits */
-    uint32_t cap_present;
+    uint32_t cap_present \
+        q_property("multifunction", \
+             QEMU_PCI_CAP_MULTIFUNCTION_BITNR, false) \
+        q_property("command_serr_enable", \
+             QEMU_PCI_CAP_SERR_BITNR, true);
 
     /* Offset of MSI-X capability in config space */
     uint8_t msix_cap;
@@ -233,15 +239,17 @@ struct PCIDevice {
     int msix_entries_nr;
 
     /* Space to store MSIX table & pending bit array */
-    uint8_t *msix_table;
-    uint8_t *msix_pba;
+    int32_t msix_table_size;
+    uint8_t *msix_table q_size(msix_table_size);
+    int32_t msix_pba_size;
+    uint8_t *msix_pba q_size(msix_pba_size);
     /* MemoryRegion container for msix exclusive BAR setup */
-    MemoryRegion msix_exclusive_bar;
+    MemoryRegion msix_exclusive_bar q_immutable;
     /* Memory Regions for MSIX table and pending bit entries. */
-    MemoryRegion msix_table_mmio;
-    MemoryRegion msix_pba_mmio;
+    MemoryRegion msix_table_mmio q_immutable;
+    MemoryRegion msix_pba_mmio q_immutable;
     /* Reference-count for entries actually in use by driver. */
-    unsigned *msix_entry_used;
+    unsigned *msix_entry_used q_immutable;
     /* MSIX function mask set or MSIX disabled */
     bool msix_function_masked;
     /* Version id needed for VMState */
@@ -251,23 +259,23 @@ struct PCIDevice {
     uint8_t msi_cap;
 
     /* PCI Express */
-    PCIExpressDevice exp;
+    PCIExpressDevice exp q_immutable;
 
     /* SHPC */
-    SHPCDevice *shpc;
+    SHPCDevice *shpc q_immutable;
 
     /* Location of option rom */
-    char *romfile;
+    char *romfile q_immutable q_property("romfile");
     bool has_rom;
-    MemoryRegion rom;
-    uint32_t rom_bar;
+    MemoryRegion rom q_immutable;
+    uint32_t rom_bar q_property("rombar", 1);
 
     /* INTx routing notifier */
-    PCIINTxRoutingNotifier intx_routing_notifier;
+    PCIINTxRoutingNotifier intx_routing_notifier q_immutable;
 
     /* MSI-X notifiers */
-    MSIVectorUseNotifier msix_vector_use_notifier;
-    MSIVectorReleaseNotifier msix_vector_release_notifier;
+    MSIVectorUseNotifier msix_vector_use_notifier q_immutable;
+    MSIVectorReleaseNotifier msix_vector_release_notifier q_immutable;
 };
 
 void pci_register_bar(PCIDevice *pci_dev, int region_num,

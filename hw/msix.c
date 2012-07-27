@@ -271,17 +271,19 @@ int msix_init(struct PCIDevice *dev, unsigned short nentries,
     dev->wmask[cap + MSIX_CONTROL_OFFSET] |= MSIX_ENABLE_MASK |
                                              MSIX_MASKALL_MASK;
 
-    dev->msix_table = g_malloc0(table_size);
-    dev->msix_pba = g_malloc0(pba_size);
+    dev->msix_table_size = table_size;
+    dev->msix_table = g_malloc0(dev->msix_table_size);
+    dev->msix_pba_size = pba_size;
+    dev->msix_pba = g_malloc0(dev->msix_pba_size);
     dev->msix_entry_used = g_malloc0(nentries * sizeof *dev->msix_entry_used);
 
     msix_mask_all(dev, nentries);
 
     memory_region_init_io(&dev->msix_table_mmio, &msix_table_mmio_ops, dev,
-                          "msix-table", table_size);
+                          "msix-table", dev->msix_table_size);
     memory_region_add_subregion(table_bar, table_offset, &dev->msix_table_mmio);
     memory_region_init_io(&dev->msix_pba_mmio, &msix_pba_mmio_ops, dev,
-                          "msix-pba", pba_size);
+                          "msix-pba", dev->msix_pba_size);
     memory_region_add_subregion(pba_bar, pba_offset, &dev->msix_pba_mmio);
 
     return 0;
@@ -359,10 +361,12 @@ void msix_uninit(PCIDevice *dev, MemoryRegion *table_bar, MemoryRegion *pba_bar)
     memory_region_destroy(&dev->msix_pba_mmio);
     g_free(dev->msix_pba);
     dev->msix_pba = NULL;
+    dev->msix_pba_size = 0;
     memory_region_del_subregion(table_bar, &dev->msix_table_mmio);
     memory_region_destroy(&dev->msix_table_mmio);
     g_free(dev->msix_table);
     dev->msix_table = NULL;
+    dev->msix_table_size = 0;
     g_free(dev->msix_entry_used);
     dev->msix_entry_used = NULL;
     dev->cap_present &= ~QEMU_PCI_CAP_MSIX;
