@@ -425,10 +425,10 @@ void block_job_cancel(BlockJob *job);
 bool block_job_is_cancelled(BlockJob *job);
 
 /**
- * block_job_cancel:
+ * block_job_cancel_sync:
  * @job: The job to be canceled.
  *
- * Asynchronously cancel the job and wait for it to reach a quiescent
+ * Synchronously cancel the job and wait for it to reach a quiescent
  * state.  Note that the completion callback will still be called
  * asynchronously, hence it is *not* valid to call #bdrv_delete
  * immediately after #block_job_cancel_sync.  Users of block jobs
