@@ -474,7 +474,13 @@ static inline void lsi_set_phase(LSIState *s, int phase)
     s->sstat1 = (s->sstat1 & ~PHASE_MASK) | phase;
 }
 
-static void lsi_bad_phase(LSIState *s, int out, int new_phase)
+static bool lsi_phase_out(LSIState *s)
+{
+    int phase = s->sstat1 & PHASE_MASK;
+    return phase == PHASE_DO || phase == PHASE_CMD || phase == PHASE_MO;
+}
+
+static void lsi_bad_phase(LSIState *s, int out, bool stop)
 {
     /* Trigger a phase mismatch.  */
     if (s->ccntl0 & LSI_CCNTL0_ENPMJ) {
@@ -487,9 +493,10 @@ static void lsi_bad_phase(LSIState *s, int out, int new_phase)
     } else {
         DPRINTF("Phase mismatch interrupt\n");
         lsi_script_scsi_interrupt(s, LSI_SIST0_MA, 0);
-        lsi_stop_script(s);
+        if (stop) {
+            lsi_stop_script(s);
+        }
     }
-    lsi_set_phase(s, new_phase);
 }
 
 
@@ -701,10 +708,9 @@ static void lsi_command_complete(SCSIRequest *req, uint32_t status, size_t resid
     s->command_complete = 2;
     if (s->waiting && s->dbc != 0) {
         /* Raise phase mismatch for short transfers.  */
-        lsi_bad_phase(s, out, PHASE_ST);
-    } else {
-        lsi_set_phase(s, PHASE_ST);
+        lsi_bad_phase(s, out, true);
     }
+    lsi_set_phase(s, PHASE_ST);
 
     if (req->hba_private == s->current) {
         req->hba_private = NULL;
@@ -1123,7 +1129,7 @@ again:
         if ((s->sstat1 & PHASE_MASK) != ((insn >> 24) & 7)) {
             DPRINTF("Wrong phase got %d expected %d\n",
                     s->sstat1 & PHASE_MASK, (insn >> 24) & 7);
-            lsi_script_scsi_interrupt(s, LSI_SIST0_MA, 0);
+            lsi_bad_phase(s, lsi_phase_out(s), false);
             break;
         }
         s->dnad = addr;
