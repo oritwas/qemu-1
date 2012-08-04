@@ -340,11 +340,11 @@ enum ide_dma_cmd {
 	((s)->dma_cmd == IDE_DMA_READ)
 
 /* NOTE: IDEState represents in fact one drive */
-struct IDEState {
-    IDEBus *bus;
+QIDL_DECLARE(IDEState) {
+    IDEBus *bus q_elsewhere;
     uint8_t unit;
     /* ide config */
-    IDEDriveKind drive_kind;
+    IDEDriveKind drive_kind q_immutable;
     int cylinders, heads, sectors, chs_trans;
     int64_t nb_sectors;
     int mult_sectors;
@@ -373,10 +373,10 @@ struct IDEState {
 
     /* set for lba48 access */
     uint8_t lba48;
-    BlockDriverState *bs;
+    BlockDriverState *bs q_elsewhere;
     char version[9];
     /* ATAPI specific */
-    struct unreported_events events;
+    struct unreported_events events q_broken;
     uint8_t sense_key;
     uint8_t asc;
     bool tray_open;
@@ -388,20 +388,20 @@ struct IDEState {
     int lba;
     int cd_sector_size;
     int atapi_dma; /* true if dma is requested for the packet cmd */
-    BlockAcctCookie acct;
-    BlockDriverAIOCB *pio_aiocb;
-    struct iovec iov;
-    QEMUIOVector qiov;
+    BlockAcctCookie acct q_immutable;
+    BlockDriverAIOCB *pio_aiocb q_immutable;
+    struct iovec iov q_derived; /* derived from io_buffer/n_sector/req_nb_sectors */
+    QEMUIOVector qiov q_derived; /* derived from iov */
     /* ATA DMA state */
     int io_buffer_offset;
     int io_buffer_size;
-    QEMUSGList sg;
+    QEMUSGList sg q_immutable;
     /* PIO transfer handling */
     int req_nb_sectors; /* number of sectors per interrupt */
-    EndTransferFunc *end_transfer_func;
-    uint8_t *data_ptr;
-    uint8_t *data_end;
-    uint8_t *io_buffer;
+    EndTransferFunc *end_transfer_func q_immutable;
+    uint8_t *data_end q_broken;
+    uint8_t *data_ptr q_broken;
+    uint8_t *io_buffer q_broken;
     /* PIO save/restore */
     int32_t io_buffer_total_len;
     int cur_io_buffer_offset;
@@ -413,15 +413,15 @@ struct IDEState {
     uint8_t ext_error;
     /* CF-ATA metadata storage */
     uint32_t mdata_size;
-    uint8_t *mdata_storage;
+    uint8_t *mdata_storage q_size(mdata_size);
     int media_changed;
-    enum ide_dma_cmd dma_cmd;
+    enum ide_dma_cmd dma_cmd q_immutable;
     /* SMART */
     uint8_t smart_enabled;
     uint8_t smart_autosave;
     int smart_errors;
     uint8_t smart_selftest_count;
-    uint8_t *smart_selftest_data;
+    uint8_t *smart_selftest_data q_size(smart_selftest_count);
     /* AHCI */
     int ncq_queues;
 };
@@ -445,16 +445,16 @@ struct IDEDMA {
     BlockDriverAIOCB *aiocb;
 };
 
-struct IDEBus {
-    BusState qbus;
-    IDEDevice *master;
-    IDEDevice *slave;
+QIDL_DECLARE(IDEBus) {
+    BusState qbus q_immutable;
+    IDEDevice *master q_immutable;
+    IDEDevice *slave q_immutable;
     IDEState ifs[2];
     int bus_id;
-    IDEDMA *dma;
+    IDEDMA *dma q_immutable;
     uint8_t unit;
     uint8_t cmd;
-    qemu_irq irq;
+    qemu_irq irq q_immutable;
 
     int error_status;
 };

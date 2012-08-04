@@ -33,6 +33,8 @@
 
 #include <hw/ide/pci.h>
 
+QIDL_ENABLE()
+
 static uint64_t bmdma_read(void *opaque, target_phys_addr_t addr, unsigned size)
 {
     BMDMAState *bm = opaque;
@@ -147,6 +149,22 @@ static void pci_piix_init_ports(PCIIDEState *d) {
     }
 }
 
+static void pci_piix_ide_get_state(Object *obj, Visitor *v, void *opaque,
+                                   const char *name, Error **errp)
+{
+    PCIDevice *pci = PCI_DEVICE(obj);
+    PCIIDEState *s = DO_UPCAST(PCIIDEState, dev, pci);
+    QIDL_VISIT_TYPE(PCIIDEState, v, &s, name, errp);
+}
+
+static void pci_piix_ide_set_state(Object *obj, Visitor *v, void *opaque,
+                                   const char *name, Error **errp)
+{
+    PCIDevice *pci = PCI_DEVICE(obj);
+    PCIIDEState *s = DO_UPCAST(PCIIDEState, dev, pci);
+    QIDL_VISIT_TYPE(PCIIDEState, v, &s, name, errp);
+}
+
 static int pci_piix_ide_initfn(PCIDevice *dev)
 {
     PCIIDEState *d = DO_UPCAST(PCIIDEState, dev, dev);
@@ -162,6 +180,10 @@ static int pci_piix_ide_initfn(PCIDevice *dev)
     vmstate_register(&d->dev.qdev, 0, &vmstate_ide_pci, d);
 
     pci_piix_init_ports(d);
+    object_property_add(OBJECT(d), "state", "PCIIDEState",
+                        pci_piix_ide_get_state, pci_piix_ide_set_state,
+                        NULL, NULL, NULL);
+    QIDL_SCHEMA_ADD_LINK(PCIIDEState, OBJECT(d), "state_schema", NULL);
 
     return 0;
 }
