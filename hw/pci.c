@@ -34,6 +34,8 @@
 #include "msi.h"
 #include "msix.h"
 
+QIDL_ENABLE()
+
 //#define DEBUG_PCI
 #ifdef DEBUG_PCI
 # define PCI_DPRINTF(format, ...)       printf(format, ## __VA_ARGS__)
@@ -45,17 +47,6 @@ static void pcibus_dev_print(Monitor *mon, DeviceState *dev, int indent);
 static char *pcibus_get_dev_path(DeviceState *dev);
 static char *pcibus_get_fw_dev_path(DeviceState *dev);
 static int pcibus_reset(BusState *qbus);
-
-static Property pci_props[] = {
-    DEFINE_PROP_PCI_DEVFN("addr", PCIDevice, devfn, -1),
-    DEFINE_PROP_STRING("romfile", PCIDevice, romfile),
-    DEFINE_PROP_UINT32("rombar",  PCIDevice, rom_bar, 1),
-    DEFINE_PROP_BIT("multifunction", PCIDevice, cap_present,
-                    QEMU_PCI_CAP_MULTIFUNCTION_BITNR, false),
-    DEFINE_PROP_BIT("command_serr_enable", PCIDevice, cap_present,
-                    QEMU_PCI_CAP_SERR_BITNR, true),
-    DEFINE_PROP_END_OF_LIST()
-};
 
 static void pci_bus_class_init(ObjectClass *klass, void *data)
 {
@@ -273,6 +264,22 @@ int pci_find_domain(const PCIBus *bus)
     return -1;
 }
 
+static void pcibus_get_state(Object *obj, Visitor *v, void *opaque,
+                             const char *name, Error **errp)
+{
+    PCIBus *pci_bus = PCI_BUS(obj);
+
+    QIDL_VISIT_TYPE(PCIBus, v, &pci_bus, name, errp);
+}
+
+static void pcibus_set_state(Object *obj, Visitor *v, void *opaque,
+                             const char *name, Error **errp)
+{
+    PCIBus *pci_bus = PCI_BUS(obj);
+
+    QIDL_VISIT_TYPE(PCIBus, v, &pci_bus, name, errp);
+}
+
 void pci_bus_new_inplace(PCIBus *bus, DeviceState *parent,
                          const char *name,
                          MemoryRegion *address_space_mem,
@@ -290,6 +297,10 @@ void pci_bus_new_inplace(PCIBus *bus, DeviceState *parent,
     pci_host_bus_register(0, bus); /* for now only pci domain 0 is supported */
 
     vmstate_register(NULL, -1, &vmstate_pcibus, bus);
+
+    object_property_add(OBJECT(bus), "state", "PCIBus",
+                        pcibus_get_state, pcibus_set_state, NULL, NULL, NULL);
+    QIDL_SCHEMA_ADD_LINK(PCIBus, OBJECT(bus), "state_schema", NULL);
 }
 
 PCIBus *pci_bus_new(DeviceState *parent, const char *name,
@@ -2084,7 +2095,7 @@ static void pci_device_class_init(ObjectClass *klass, void *data)
     k->unplug = pci_unplug_device;
     k->exit = pci_unregister_device;
     k->bus_type = TYPE_PCI_BUS;
-    k->props = pci_props;
+    k->props = QIDL_PROPERTIES(PCIDevice);
 }
 
 void pci_setup_iommu(PCIBus *bus, PCIDMAContextFunc fn, void *opaque)
