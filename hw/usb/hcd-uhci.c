@@ -33,6 +33,8 @@
 #include "dma.h"
 #include "trace.h"
 
+QIDL_ENABLE()
+
 //#define DEBUG
 //#define DEBUG_DUMP_DATA
 
@@ -113,15 +115,18 @@ struct UHCIQueue {
     int8_t    valid;
 };
 
-typedef struct UHCIPort {
-    USBPort port;
-    uint16_t ctrl;
-} UHCIPort;
+typedef struct UHCIPort UHCIPort;
 
-struct UHCIState {
+QIDL_DECLARE(UHCIPort) {
+    USBPort port q_immutable;
+    uint16_t ctrl;
+};
+
+
+QIDL_DECLARE(UHCIState) {
     PCIDevice dev;
-    MemoryRegion io_bar;
-    USBBus bus; /* Note unused when we're a companion controller */
+    MemoryRegion io_bar q_immutable;
+    USBBus bus q_immutable; /* Note unused when we're a companion controller */
     uint16_t cmd; /* cmd register */
     uint16_t status;
     uint16_t intr; /* interrupt enable register */
@@ -131,9 +136,9 @@ struct UHCIState {
     uint8_t status2; /* bit 0 and 1 are used to generate UHCI_STS_USBINT */
     int64_t expire_time;
     QEMUTimer *frame_timer;
-    QEMUBH *bh;
+    QEMUBH *bh q_immutable;
     uint32_t frame_bytes;
-    uint32_t frame_bandwidth;
+    uint32_t frame_bandwidth q_property("bandwidth", 1280);
     UHCIPort ports[NB_PORTS];
 
     /* Interrupts that should be raised at the end of the current frame.  */
@@ -141,12 +146,12 @@ struct UHCIState {
     int irq_pin;
 
     /* Active packets */
-    QTAILQ_HEAD(, UHCIQueue) queues;
+    QTAILQ_HEAD(, UHCIQueue) queues q_immutable;
     uint8_t num_ports_vmstate;
 
     /* Properties */
-    char *masterbus;
-    uint32_t firstport;
+    char *masterbus q_property("masterbus");
+    uint32_t firstport q_property("firstport", 0);
 };
 
 typedef struct UHCI_TD {
@@ -1217,6 +1222,22 @@ static USBPortOps uhci_port_ops = {
 static USBBusOps uhci_bus_ops = {
 };
 
+static void usb_uhci_get_state(Object *obj, Visitor *v, void *opaque,
+                               const char *name, Error **errp)
+{
+    PCIDevice *pci = PCI_DEVICE(obj);
+    UHCIState *s = DO_UPCAST(UHCIState, dev, pci);
+    QIDL_VISIT_TYPE(UHCIState, v, &s, name, errp);
+}
+
+static void usb_uhci_set_state(Object *obj, Visitor *v, void *opaque,
+                               const char *name, Error **errp)
+{
+    PCIDevice *pci = PCI_DEVICE(obj);
+    UHCIState *s = DO_UPCAST(UHCIState, dev, pci);
+    QIDL_VISIT_TYPE(UHCIState, v, &s, name, errp);
+}
+
 static int usb_uhci_common_initfn(PCIDevice *dev)
 {
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(dev);
@@ -1273,6 +1294,11 @@ static int usb_uhci_common_initfn(PCIDevice *dev)
        to rely on this.  */
     pci_register_bar(&s->dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &s->io_bar);
 
+    object_property_add(OBJECT(s), "state", "UHCIState",
+                        usb_uhci_get_state, usb_uhci_set_state,
+                        NULL, NULL, NULL);
+    QIDL_SCHEMA_ADD_LINK(UHCIState, OBJECT(s), "state_schema", NULL);
+
     return 0;
 }
 
@@ -1298,13 +1324,6 @@ static void usb_uhci_exit(PCIDevice *dev)
     memory_region_destroy(&s->io_bar);
 }
 
-static Property uhci_properties[] = {
-    DEFINE_PROP_STRING("masterbus", UHCIState, masterbus),
-    DEFINE_PROP_UINT32("firstport", UHCIState, firstport, 0),
-    DEFINE_PROP_UINT32("bandwidth", UHCIState, frame_bandwidth, 1280),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void piix3_uhci_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1317,7 +1336,7 @@ static void piix3_uhci_class_init(ObjectClass *klass, void *data)
     k->revision = 0x01;
     k->class_id = PCI_CLASS_SERIAL_USB;
     dc->vmsd = &vmstate_uhci;
-    dc->props = uhci_properties;
+    dc->props = QIDL_PROPERTIES(UHCIState);
 }
 
 static TypeInfo piix3_uhci_info = {
@@ -1339,7 +1358,7 @@ static void piix4_uhci_class_init(ObjectClass *klass, void *data)
     k->revision = 0x01;
     k->class_id = PCI_CLASS_SERIAL_USB;
     dc->vmsd = &vmstate_uhci;
-    dc->props = uhci_properties;
+    dc->props = QIDL_PROPERTIES(UHCIState);
 }
 
 static TypeInfo piix4_uhci_info = {
@@ -1361,7 +1380,7 @@ static void vt82c686b_uhci_class_init(ObjectClass *klass, void *data)
     k->revision = 0x01;
     k->class_id = PCI_CLASS_SERIAL_USB;
     dc->vmsd = &vmstate_uhci;
-    dc->props = uhci_properties;
+    dc->props = QIDL_PROPERTIES(UHCIState);
 }
 
 static TypeInfo vt82c686b_uhci_info = {
@@ -1382,7 +1401,7 @@ static void ich9_uhci1_class_init(ObjectClass *klass, void *data)
     k->revision = 0x03;
     k->class_id = PCI_CLASS_SERIAL_USB;
     dc->vmsd = &vmstate_uhci;
-    dc->props = uhci_properties;
+    dc->props = QIDL_PROPERTIES(UHCIState);
 }
 
 static TypeInfo ich9_uhci1_info = {
@@ -1403,7 +1422,7 @@ static void ich9_uhci2_class_init(ObjectClass *klass, void *data)
     k->revision = 0x03;
     k->class_id = PCI_CLASS_SERIAL_USB;
     dc->vmsd = &vmstate_uhci;
-    dc->props = uhci_properties;
+    dc->props = QIDL_PROPERTIES(UHCIState);
 }
 
 static TypeInfo ich9_uhci2_info = {
@@ -1424,7 +1443,7 @@ static void ich9_uhci3_class_init(ObjectClass *klass, void *data)
     k->revision = 0x03;
     k->class_id = PCI_CLASS_SERIAL_USB;
     dc->vmsd = &vmstate_uhci;
-    dc->props = uhci_properties;
+    dc->props = QIDL_PROPERTIES(UHCIState);
 }
 
 static TypeInfo ich9_uhci3_info = {
