@@ -59,7 +59,7 @@ static V9fsSynthNode *v9fs_add_dir_node(V9fsSynthNode *parent, int mode,
     }
     node->private = node;
     pstrcpy(node->name, sizeof(node->name), name);
-    QLIST_INSERT_HEAD_RCU(&parent->child, node, sibling);
+    QLIST_INSERT_HEAD(&parent->child, node, sibling);
     return node;
 }
 
@@ -133,7 +133,7 @@ int qemu_v9fs_synth_add_file(V9fsSynthNode *parent, int mode,
     node->attr->mode   = mode;
     node->private      = arg;
     pstrcpy(node->name, sizeof(node->name), name);
-    QLIST_INSERT_HEAD_RCU(&parent->child, node, sibling);
+    QLIST_INSERT_HEAD(&parent->child, node, sibling);
     ret = 0;
 err_out:
     qemu_mutex_unlock(&v9fs_synth_mutex);
@@ -229,7 +229,7 @@ static int v9fs_synth_get_dentry(V9fsSynthNode *dir, struct dirent *entry,
     int i = 0;
     V9fsSynthNode *node;
 
-    rcu_read_lock();
+    qemu_mutex_lock(&v9fs_synth_mutex);
     QLIST_FOREACH(node, &dir->child, sibling) {
         /* This is the off child of the directory */
         if (i == off) {
@@ -245,7 +245,7 @@ static int v9fs_synth_get_dentry(V9fsSynthNode *dir, struct dirent *entry,
     v9fs_synth_direntry(node, entry, off);
     *result = entry;
 out:
-    rcu_read_unlock();
+    qemu_mutex_unlock(&v9fs_synth_mutex);
     return 0;
 }
 
@@ -476,7 +476,7 @@ static int v9fs_synth_name_to_path(FsContext *ctx, V9fsPath *dir_path,
 
     }
 
-    rcu_read_lock();
+    qemu_mutex_lock(&v9fs_synth_mutex);
     if (!dir_path) {
         dir_node = &v9fs_synth_root;
     } else {
@@ -504,7 +504,7 @@ static int v9fs_synth_name_to_path(FsContext *ctx, V9fsPath *dir_path,
     memcpy(target->data, &node, sizeof(void *));
     target->size = sizeof(void *);
 err_out:
-    rcu_read_unlock();
+    qemu_mutex_unlock(&v9fs_synth_mutex);
     return ret;
 }
 
