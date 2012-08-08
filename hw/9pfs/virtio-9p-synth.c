@@ -237,14 +237,15 @@ static int v9fs_synth_get_dentry(V9fsSynthNode *dir, struct dirent *entry,
         }
         i++;
     }
-    rcu_read_unlock();
     if (!node) {
         /* end of directory */
         *result = NULL;
-        return 0;
+        goto out;
     }
     v9fs_synth_direntry(node, entry, off);
     *result = entry;
+out:
+    rcu_read_unlock();
     return 0;
 }
 
@@ -466,6 +467,7 @@ static int v9fs_synth_name_to_path(FsContext *ctx, V9fsPath *dir_path,
 {
     V9fsSynthNode *node;
     V9fsSynthNode *dir_node;
+    int ret = 0;
 
     /* "." and ".." are not allowed */
     if (!strcmp(name, ".") || !strcmp(name, "..")) {
@@ -473,34 +475,37 @@ static int v9fs_synth_name_to_path(FsContext *ctx, V9fsPath *dir_path,
         return -1;
 
     }
+
+    rcu_read_lock();
     if (!dir_path) {
         dir_node = &v9fs_synth_root;
     } else {
         dir_node = *(V9fsSynthNode **)dir_path->data;
     }
-    if (!strcmp(name, "/")) {
-        node = dir_node;
-        goto out;
-    }
-    /* search for the name in the childern */
-    rcu_read_lock();
-    QLIST_FOREACH(node, &dir_node->child, sibling) {
-        if (!strcmp(node->name, name)) {
-            break;
+
+    node = dir_node;
+    if (strcmp(name, "/") != 0) {
+        /* search for the name in the childern */
+        QLIST_FOREACH(node, &dir_node->child, sibling) {
+            if (!strcmp(node->name, name)) {
+                break;
+            }
         }
     }
-    rcu_read_unlock();
 
     if (!node) {
         errno = ENOENT;
-        return -1;
+        ret = -1;
+        goto err_out;
     }
-out:
+
     /* Copy the node pointer to fid */
     target->data = g_malloc(sizeof(void *));
     memcpy(target->data, &node, sizeof(void *));
     target->size = sizeof(void *);
-    return 0;
+err_out:
+    rcu_read_unlock();
+    return ret;
 }
 
 static int v9fs_synth_renameat(FsContext *ctx, V9fsPath *olddir,
