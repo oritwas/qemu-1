@@ -32,6 +32,8 @@
 #include "vga_int.h"
 #include "loader.h"
 
+QIDL_ENABLE()
+
 /*
  * TODO:
  *    - destination write mask support not complete (bits 5..7)
@@ -196,17 +198,19 @@ typedef void (*cirrus_bitblt_rop_t) (struct CirrusVGAState *s,
 typedef void (*cirrus_fill_t)(struct CirrusVGAState *s,
                               uint8_t *dst, int dst_pitch, int width, int height);
 
-typedef struct CirrusVGAState {
+typedef struct CirrusVGAState CirrusVGAState;
+
+QIDL_DECLARE(CirrusVGAState) {
     VGACommonState vga;
 
-    MemoryRegion cirrus_linear_io;
-    MemoryRegion cirrus_linear_bitblt_io;
-    MemoryRegion cirrus_mmio_io;
-    MemoryRegion pci_bar;
+    MemoryRegion cirrus_linear_io q_immutable;
+    MemoryRegion cirrus_linear_bitblt_io q_immutable;
+    MemoryRegion cirrus_mmio_io q_immutable;
+    MemoryRegion pci_bar q_immutable;
     bool linear_vram;  /* vga.vram mapped over cirrus_linear_io */
-    MemoryRegion low_mem_container; /* container for 0xa0000-0xc0000 */
-    MemoryRegion low_mem;           /* always mapped, overridden by: */
-    MemoryRegion cirrus_bank[2];    /*   aliases at 0xa0000-0xb0000  */
+    MemoryRegion low_mem_container q_immutable; /* container for 0xa0000-0xc0000 */
+    MemoryRegion low_mem q_immutable;           /* always mapped, overridden by: */
+    MemoryRegion cirrus_bank[2] q_immutable;    /*   aliases at 0xa0000-0xb0000  */
     uint32_t cirrus_addr_mask;
     uint32_t linear_mmio_mask;
     uint8_t cirrus_shadow_gr0;
@@ -229,11 +233,11 @@ typedef struct CirrusVGAState {
     uint32_t cirrus_blt_srcaddr;
     uint8_t cirrus_blt_mode;
     uint8_t cirrus_blt_modeext;
-    cirrus_bitblt_rop_t cirrus_rop;
+    cirrus_bitblt_rop_t cirrus_rop q_immutable;
 #define CIRRUS_BLTBUFSIZE (2048 * 4) /* one line width */
     uint8_t cirrus_bltbuf[CIRRUS_BLTBUFSIZE];
-    uint8_t *cirrus_srcptr;
-    uint8_t *cirrus_srcptr_end;
+    uint8_t *cirrus_srcptr q_derived;
+    uint8_t *cirrus_srcptr_end q_derived;
     uint32_t cirrus_srccounter;
     /* hwcursor display state */
     int last_hw_cursor_size;
@@ -244,17 +248,21 @@ typedef struct CirrusVGAState {
     int real_vram_size; /* XXX: suppress that */
     int device_id;
     int bustype;
-} CirrusVGAState;
+};
 
-typedef struct PCICirrusVGAState {
+typedef struct PCICirrusVGAState PCICirrusVGAState;
+
+QIDL_DECLARE(PCICirrusVGAState) {
     PCIDevice dev;
     CirrusVGAState cirrus_vga;
-} PCICirrusVGAState;
+};
 
-typedef struct ISACirrusVGAState {
-    ISADevice dev;
+typedef struct ISACirrusVGAState ISACirrusVGAState;
+
+QIDL_DECLARE(ISACirrusVGAState) {
+    ISADevice dev q_immutable;
     CirrusVGAState cirrus_vga;
-} ISACirrusVGAState;
+};
 
 static uint8_t rop_to_index[256];
 
@@ -2894,6 +2902,22 @@ static void cirrus_init_common(CirrusVGAState * s, int device_id, int is_pci,
  *
  ***************************************/
 
+static void isa_cirrus_vga_get_state(Object *obj, Visitor *v, void *opaque,
+                                     const char *name, Error **errp)
+{
+    ISADevice *isa = ISA_DEVICE(obj);
+    ISACirrusVGAState *s = DO_UPCAST(ISACirrusVGAState, dev, isa);
+    QIDL_VISIT_TYPE(ISACirrusVGAState, v, &s, name, errp);
+}
+
+static void isa_cirrus_vga_set_state(Object *obj, Visitor *v, void *opaque,
+                                     const char *name, Error **errp)
+{
+    ISADevice *isa = ISA_DEVICE(obj);
+    ISACirrusVGAState *s = DO_UPCAST(ISACirrusVGAState, dev, isa);
+    QIDL_VISIT_TYPE(ISACirrusVGAState, v, &s, name, errp);
+}
+
 static int vga_initfn(ISADevice *dev)
 {
     ISACirrusVGAState *d = DO_UPCAST(ISACirrusVGAState, dev, dev);
@@ -2909,6 +2933,10 @@ static int vga_initfn(ISADevice *dev)
     rom_add_vga(VGABIOS_CIRRUS_FILENAME);
     /* XXX ISA-LFB support */
     /* FIXME not qdev yet */
+    object_property_add(OBJECT(d), "state", "ISACirrusVGAState",
+                        isa_cirrus_vga_get_state, isa_cirrus_vga_set_state,
+                        NULL, NULL, NULL);
+    QIDL_SCHEMA_ADD_LINK(ISACirrusVGAState, OBJECT(d), "state_schema", NULL);
     return 0;
 }
 
@@ -2933,6 +2961,22 @@ static TypeInfo isa_cirrus_vga_info = {
  *  PCI bus support
  *
  ***************************************/
+
+static void pci_cirrus_vga_get_state(Object *obj, Visitor *v, void *opaque,
+                                     const char *name, Error **errp)
+{
+    PCIDevice *pci = PCI_DEVICE(obj);
+    PCICirrusVGAState *s = DO_UPCAST(PCICirrusVGAState, dev, pci);
+    QIDL_VISIT_TYPE(PCICirrusVGAState, v, &s, name, errp);
+}
+
+static void pci_cirrus_vga_set_state(Object *obj, Visitor *v, void *opaque,
+                                     const char *name, Error **errp)
+{
+    PCIDevice *pci = PCI_DEVICE(obj);
+    PCICirrusVGAState *s = DO_UPCAST(PCICirrusVGAState, dev, pci);
+    QIDL_VISIT_TYPE(PCICirrusVGAState, v, &s, name, errp);
+}
 
 static int pci_cirrus_vga_initfn(PCIDevice *dev)
 {
@@ -2966,6 +3010,11 @@ static int pci_cirrus_vga_initfn(PCIDevice *dev)
      if (device_id == CIRRUS_ID_CLGD5446) {
          pci_register_bar(&d->dev, 1, 0, &s->cirrus_mmio_io);
      }
+
+    object_property_add(OBJECT(d), "state", "PCICirrusVGAState",
+                        pci_cirrus_vga_get_state, pci_cirrus_vga_set_state,
+                        NULL, NULL, NULL);
+    QIDL_SCHEMA_ADD_LINK(PCICirrusVGAState, OBJECT(d), "state_schema", NULL);
      return 0;
 }
 
