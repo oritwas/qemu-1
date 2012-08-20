@@ -109,7 +109,7 @@ endif
 user-obj-y =
 user-obj-y += envlist.o path.o
 user-obj-y += tcg-runtime.o host-utils.o
-user-obj-y += cutils.o iov.o cache-utils.o
+user-obj-y += cutils.o cache-utils.o
 user-obj-y += module.o
 user-obj-y += qemu-user.o
 user-obj-y += $(trace-obj-y)
