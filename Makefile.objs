@@ -229,7 +229,7 @@ universal-obj-y += $(qapi-obj-y)
 ######################################################################
 # guest agent
 
-qga-obj-y = qga/ qemu-ga.o module.o
+qga-obj-y = qga/ qemu-ga.o module.o monitor-dummy.o
 qga-obj-$(CONFIG_WIN32) += oslib-win32.o
 qga-obj-$(CONFIG_POSIX) += oslib-posix.o qemu-sockets.o qemu-option.o
 

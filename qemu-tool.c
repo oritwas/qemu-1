@@ -14,7 +14,6 @@
  */
 
 #include "qemu-common.h"
-#include "monitor.h"
 #include "qemu-timer.h"
 #include "qemu-log.h"
 #include "migration.h"
@@ -25,67 +24,14 @@
 
 #include <sys/time.h>
 
-struct QEMUBH
-{
-    QEMUBHFunc *cb;
-    void *opaque;
-};
-
 const char *qemu_get_vm_name(void)
 {
     return NULL;
 }
 
-Monitor *cur_mon;
-
 void vm_stop(RunState state)
 {
     abort();
-}
-
-int monitor_cur_is_qmp(void)
-{
-    return 0;
-}
-
-void monitor_set_error(Monitor *mon, QError *qerror)
-{
-}
-
-void monitor_vprintf(Monitor *mon, const char *fmt, va_list ap)
-{
-}
-
-void monitor_printf(Monitor *mon, const char *fmt, ...)
-{
-}
-
-void monitor_print_filename(Monitor *mon, const char *filename)
-{
-}
-
-void monitor_protocol_event(MonitorEvent event, QObject *data)
-{
-}
-
-int monitor_fdset_get_fd(int64_t fdset_id, int flags)
-{
-    return -1;
-}
-
-int monitor_fdset_dup_fd_add(int64_t fdset_id, int dup_fd)
-{
-    return -1;
-}
-
-int monitor_fdset_dup_fd_remove(int dup_fd)
-{
-    return -1;
-}
-
-int monitor_fdset_dup_fd_find(int dup_fd)
-{
-    return -1;
 }
 
 int64_t cpu_get_clock(void)

@@ -158,7 +158,7 @@ endif
 qemu-img.o: qemu-img-cmds.h
 
 tools-obj-y = $(oslib-obj-y) $(trace-obj-y) qemu-tool.o qemu-timer.o \
-	qemu-timer-common.o main-loop.o notify.o \
+	qemu-timer-common.o main-loop.o notify.o monitor-dummy.o \
 	iohandler.o cutils.o iov.o async.o
 tools-obj-$(CONFIG_POSIX) += compatfd.o
 
