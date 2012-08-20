@@ -19,7 +19,7 @@ universal-obj-y += $(qom-obj-y)
 
 #######################################################################
 # oslib-obj-y is code depending on the OS (win32 vs posix)
-oslib-obj-y = osdep.o
+oslib-obj-y = osdep.o cutils.o
 oslib-obj-$(CONFIG_WIN32) += oslib-win32.o qemu-thread-win32.o
 oslib-obj-$(CONFIG_POSIX) += oslib-posix.o qemu-thread-posix.o
 
@@ -41,8 +41,8 @@ coroutine-obj-$(CONFIG_WIN32) += coroutine-win32.o
 #######################################################################
 # block-obj-y is code used by both qemu system emulation and qemu-img
 
-block-obj-y = cutils.o iov.o cache-utils.o qemu-option.o module.o async.o
-block-obj-y += nbd.o block.o blockjob.o aio.o aes.o qemu-config.o
+block-obj-y = iov.o cache-utils.o qemu-option.o module.o async.o
+block-obj-y += nbd.o block.o aio.o aes.o qemu-config.o
 block-obj-y += qemu-progress.o qemu-sockets.o uri.o
 block-obj-y += $(coroutine-obj-y) $(qobject-obj-y) $(version-obj-y)
 block-obj-$(CONFIG_POSIX) += posix-aio-compat.o
@@ -90,7 +90,7 @@ common-obj-y += hw/
 common-obj-y += ui/
 common-obj-y += bt-host.o bt-vhci.o
 
-common-obj-y += iov.o acl.o
+common-obj-y += acl.o
 common-obj-$(CONFIG_POSIX) += compatfd.o
 common-obj-y += notify.o event_notifier.o
 common-obj-y += qemu-timer.o qemu-timer-common.o
@@ -109,7 +109,7 @@ endif
 user-obj-y =
 user-obj-y += envlist.o path.o
 user-obj-y += tcg-runtime.o host-utils.o
-user-obj-y += cutils.o cache-utils.o
+user-obj-y += cache-utils.o
 user-obj-y += module.o
 user-obj-y += qemu-user.o
 user-obj-y += $(trace-obj-y)

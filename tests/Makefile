@@ -36,18 +36,18 @@ test-obj-y = tests/check-qint.o tests/check-qstring.o tests/check-qdict.o \
 	tests/test-qmp-input-visitor.o tests/test-qmp-input-strict.o \
 	tests/test-qmp-commands.o tests/test-visitor-serialization.o
 
-test-qapi-obj-y =  $(qobject-obj-y) $(qapi-obj-y) $(oslib-obj-y) cutils.o monitor-dummy.o monitor-dummy.o
+test-qapi-obj-y =  $(qobject-obj-y) $(qapi-obj-y) $(oslib-obj-y) monitor-dummy.o monitor-dummy.o
 test-qapi-obj-y += tests/test-qapi-visit.o tests/test-qapi-types.o
 test-qapi-obj-y += module.o
 
 $(test-obj-y): QEMU_INCLUDES += -Itests
 
-tests/check-qint$(EXESUF): tests/check-qint.o qint.o $(oslib-obj-y) cutils.o monitor-dummy.o
-tests/check-qstring$(EXESUF): tests/check-qstring.o qstring.o $(oslib-obj-y) cutils.o monitor-dummy.o
-tests/check-qdict$(EXESUF): tests/check-qdict.o qdict.o qfloat.o qint.o qstring.o qbool.o qlist.o $(oslib-obj-y) cutils.o monitor-dummy.o
-tests/check-qlist$(EXESUF): tests/check-qlist.o qlist.o qint.o $(oslib-obj-y) cutils.o monitor-dummy.o
-tests/check-qfloat$(EXESUF): tests/check-qfloat.o qfloat.o $(oslib-obj-y) cutils.o monitor-dummy.o
-tests/check-qjson$(EXESUF): tests/check-qjson.o $(qobject-obj-y) $(oslib-obj-y) cutils.o monitor-dummy.o
+tests/check-qint$(EXESUF): tests/check-qint.o qint.o $(oslib-obj-y) monitor-dummy.o
+tests/check-qstring$(EXESUF): tests/check-qstring.o qstring.o $(oslib-obj-y) monitor-dummy.o
+tests/check-qdict$(EXESUF): tests/check-qdict.o qdict.o qfloat.o qint.o qstring.o qbool.o qlist.o $(oslib-obj-y) monitor-dummy.o
+tests/check-qlist$(EXESUF): tests/check-qlist.o qlist.o qint.o $(oslib-obj-y) monitor-dummy.o
+tests/check-qfloat$(EXESUF): tests/check-qfloat.o qfloat.o $(oslib-obj-y) monitor-dummy.o
+tests/check-qjson$(EXESUF): tests/check-qjson.o $(qobject-obj-y) $(oslib-obj-y) monitor-dummy.o
 tests/test-coroutine$(EXESUF): tests/test-coroutine.o $(block-obj-y) $(tools-obj-y)
 tests/test-iov$(EXESUF): tests/test-iov.o iov.o
 
@@ -81,7 +81,7 @@ TARGETS=$(patsubst %-softmmu,%, $(filter %-softmmu,$(TARGET_DIRS)))
 QTEST_TARGETS=$(foreach TARGET,$(TARGETS), $(if $(check-qtest-$(TARGET)-y), $(TARGET),))
 check-qtest-$(CONFIG_POSIX)=$(foreach TARGET,$(TARGETS), $(check-qtest-$(TARGET)-y))
 
-qtest-obj-y = tests/libqtest.o $(oslib-obj-y) $(oslib-obj-y) cutils.o monitor-dummy.o
+qtest-obj-y = tests/libqtest.o $(oslib-obj-y) $(oslib-obj-y) monitor-dummy.o
 $(check-qtest-y): $(qtest-obj-y)
 
 .PHONY: check-help

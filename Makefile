@@ -159,7 +159,7 @@ qemu-img.o: qemu-img-cmds.h
 
 tools-obj-y = $(oslib-obj-y) $(trace-obj-y) qemu-tool.o qemu-timer.o \
 	qemu-timer-common.o main-loop.o notify.o monitor-dummy.o \
-	iohandler.o cutils.o iov.o async.o
+	iohandler.o
 tools-obj-$(CONFIG_POSIX) += compatfd.o
 
 qemu-img$(EXESUF): qemu-img.o $(tools-obj-y) $(block-obj-y) $(qapi-obj-y) \
@@ -169,7 +169,7 @@ qemu-io$(EXESUF): qemu-io.o cmd.o $(tools-obj-y) $(block-obj-y)
 
 qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o
 
-vscclient$(EXESUF): $(libcacard-y) $(oslib-obj-y) $(trace-obj-y) monitor-dummy.o qemu-timer-common.o cutils.o libcacard/vscclient.o
+vscclient$(EXESUF): $(libcacard-y) $(oslib-obj-y) $(trace-obj-y) monitor-dummy.o qemu-timer-common.o libcacard/vscclient.o
 	$(call quiet-command,$(CC) $(LDFLAGS) -o $@ $^ $(libcacard_libs) $(LIBS),"  LINK  $@")
 
 fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/virtio-9p-marshal.o oslib-posix.o $(trace-obj-y)
@@ -212,7 +212,7 @@ $(SRC_PATH)/qapi-schema.json $(SRC_PATH)/scripts/qapi-commands.py $(qapi-py)
 QGALIB_GEN=$(addprefix qga/qapi-generated/, qga-qapi-types.h qga-qapi-visit.h qga-qmp-commands.h)
 $(qga-obj-y) qemu-ga.o: $(QGALIB_GEN)
 
-qemu-ga$(EXESUF): qemu-ga.o $(qga-obj-y) $(trace-obj-y) $(oslib-obj-y) cutils.o $(qapi-obj-y) $(qobject-obj-y) $(version-obj-y)
+qemu-ga$(EXESUF): qemu-ga.o $(qga-obj-y) $(trace-obj-y) $(oslib-obj-y) $(qapi-obj-y) $(qobject-obj-y) $(version-obj-y)
 
 QEMULIBS=libhw libuser libdis libdis-user
 
