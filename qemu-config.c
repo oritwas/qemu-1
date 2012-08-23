@@ -176,6 +176,9 @@ static QemuOptsList qemu_chardev_opts = {
             .name = "to",
             .type = QEMU_OPT_NUMBER,
         },{
+            .name = "type",
+            .type = QEMU_OPT_STRING,
+        },{
             .name = "ipv4",
             .type = QEMU_OPT_BOOL,
         },{
