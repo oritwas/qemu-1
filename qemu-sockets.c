@@ -639,10 +639,9 @@ int inet_nonblocking_connect(const char *str,
 
 #ifndef _WIN32
 
-int unix_listen_opts(QemuOpts *opts, Error **errp)
+int unix_listen_opts(UnixSocketAddress *addr, Error **errp)
 {
     struct sockaddr_un un;
-    const char *path = qemu_opt_get(opts, "path");
     int sock, fd;
 
     sock = qemu_socket(PF_UNIX, SOCK_STREAM, 0);
@@ -653,8 +652,8 @@ int unix_listen_opts(QemuOpts *opts, Error **errp)
 
     memset(&un, 0, sizeof(un));
     un.sun_family = AF_UNIX;
-    if (path && strlen(path)) {
-        snprintf(un.sun_path, sizeof(un.sun_path), "%s", path);
+    if (strlen(addr->path)) {
+        snprintf(un.sun_path, sizeof(un.sun_path), "%s", addr->path);
     } else {
         char *tmpdir = getenv("TMPDIR");
         snprintf(un.sun_path, sizeof(un.sun_path), "%s/qemu-socket-XXXXXX",
@@ -667,7 +666,8 @@ int unix_listen_opts(QemuOpts *opts, Error **errp)
          * worst case possible is bind() failing, i.e. a DoS attack.
          */
         fd = mkstemp(un.sun_path); close(fd);
-        qemu_opt_set(opts, "path", un.sun_path);
+        g_free(addr->path);
+        addr->path = g_strdup(un.sun_path);
     }
 
     unlink(un.sun_path);
@@ -687,18 +687,12 @@ err:
     return -1;
 }
 
-int unix_connect_opts(QemuOpts *opts, Error **errp,
+int unix_connect_opts(UnixSocketAddress *addr, Error **errp,
                       NonBlockingConnectHandler *callback, void *opaque)
 {
     struct sockaddr_un un;
-    const char *path = qemu_opt_get(opts, "path");
     ConnectState *connect_state = NULL;
     int sock, rc;
-
-    if (NULL == path) {
-        error_setg(errp, "unix connect: no path specified\n");
-        return -1;
-    }
 
     sock = qemu_socket(PF_UNIX, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -714,7 +708,7 @@ int unix_connect_opts(QemuOpts *opts, Error **errp,
 
     memset(&un, 0, sizeof(un));
     un.sun_family = AF_UNIX;
-    snprintf(un.sun_path, sizeof(un.sun_path), "%s", path);
+    snprintf(un.sun_path, sizeof(un.sun_path), "%s", addr->path);
 
     /* connect to peer */
     do {
@@ -748,14 +742,14 @@ int unix_connect_opts(QemuOpts *opts, Error **errp,
 
 #else
 
-int unix_listen_opts(QemuOpts *opts, Error **errp)
+int unix_listen_opts(UnixSocketAddress *addr, Error **errp)
 {
     error_setg(errp, "unix sockets are not available on windows");
     errno = ENOTSUP;
     return -1;
 }
 
-int unix_connect_opts(QemuOpts *opts, Error **errp,
+int unix_connect_opts(UnixSocketAddress *addr, Error **errp,
                       NonBlockingConnectHandler *callback, void *opaque)
 {
     error_setg(errp, "unix sockets are not available on windows");
@@ -767,42 +761,37 @@ int unix_connect_opts(QemuOpts *opts, Error **errp,
 /* compatibility wrapper */
 int unix_listen(const char *str, char *ostr, int olen, Error **errp)
 {
-    QemuOpts *opts;
-    char *path, *optstr;
+    UnixSocketAddress *addr;
+    char *optstr;
     int sock, len;
 
-    opts = qemu_opts_create(&dummy_opts, NULL, 0, NULL);
+    addr = g_malloc0(sizeof(UnixSocketAddress));
 
     optstr = strchr(str, ',');
     if (optstr) {
         len = optstr - str;
-        if (len) {
-            path = g_malloc(len+1);
-            snprintf(path, len+1, "%.*s", len, str);
-            qemu_opt_set(opts, "path", path);
-            g_free(path);
-        }
+        addr->path = g_strdup_printf("%.*s", len, str);
     } else {
-        qemu_opt_set(opts, "path", str);
+        addr->path = g_strdup(str);
     }
 
-    sock = unix_listen_opts(opts, errp);
+    sock = unix_listen_opts(addr, errp);
 
     if (sock != -1 && ostr)
-        snprintf(ostr, olen, "%s%s", qemu_opt_get(opts, "path"), optstr ? optstr : "");
-    qemu_opts_del(opts);
+        snprintf(ostr, olen, "%s%s", addr->path, optstr ? optstr : "");
+    qapi_free_UnixSocketAddress(addr);
     return sock;
 }
 
 int unix_connect(const char *path, Error **errp)
 {
-    QemuOpts *opts;
+    UnixSocketAddress *addr;
     int sock;
 
-    opts = qemu_opts_create(&dummy_opts, NULL, 0, NULL);
-    qemu_opt_set(opts, "path", path);
-    sock = unix_connect_opts(opts, errp, NULL, NULL);
-    qemu_opts_del(opts);
+    addr = g_malloc0(sizeof(UnixSocketAddress));
+    addr->path = g_strdup(path);
+    sock = unix_connect_opts(addr, errp, NULL, NULL);
+    qapi_free_UnixSocketAddress(addr);
     return sock;
 }
 
@@ -811,15 +800,15 @@ int unix_nonblocking_connect(const char *path,
                              NonBlockingConnectHandler *callback,
                              void *opaque, Error **errp)
 {
-    QemuOpts *opts;
-    int sock = -1;
+    UnixSocketAddress *addr;
+    int sock;
 
     g_assert(callback != NULL);
 
-    opts = qemu_opts_create(&dummy_opts, NULL, 0, NULL);
-    qemu_opt_set(opts, "path", path);
-    sock = unix_connect_opts(opts, errp, callback, opaque);
-    qemu_opts_del(opts);
+    addr = g_malloc0(sizeof(UnixSocketAddress));
+    addr->path = g_strdup(path);
+    sock = unix_connect_opts(addr, errp, callback, opaque);
+    qapi_free_UnixSocketAddress(addr);
     return sock;
 }
 
@@ -864,18 +853,15 @@ fail:
 int socket_connect(SocketAddress *addr, Error **errp,
                    NonBlockingConnectHandler *callback, void *opaque)
 {
-    QemuOpts *opts;
     int fd;
 
-    opts = qemu_opts_create(&dummy_opts, NULL, 0, NULL);
     switch (addr->kind) {
     case SOCKET_ADDRESS_KIND_INET:
         fd = inet_connect_opts(addr->inet, errp, callback, opaque);
         break;
 
     case SOCKET_ADDRESS_KIND_UNIX:
-        qemu_opt_set(opts, "path", addr->q_unix->path);
-        fd = unix_connect_opts(opts, errp, callback, opaque);
+        fd = unix_connect_opts(addr->q_unix, errp, callback, opaque);
         break;
 
     case SOCKET_ADDRESS_KIND_FD:
@@ -888,24 +874,20 @@ int socket_connect(SocketAddress *addr, Error **errp,
     default:
         abort();
     }
-    qemu_opts_del(opts);
     return fd;
 }
 
 int socket_listen(SocketAddress *addr, Error **errp)
 {
-    QemuOpts *opts;
     int fd;
 
-    opts = qemu_opts_create(&dummy_opts, NULL, 0, NULL);
     switch (addr->kind) {
     case SOCKET_ADDRESS_KIND_INET:
         fd = inet_listen_opts(addr->inet, 0, errp);
         break;
 
     case SOCKET_ADDRESS_KIND_UNIX:
-        qemu_opt_set(opts, "path", addr->q_unix->path);
-        fd = unix_listen_opts(opts, errp);
+        fd = unix_listen_opts(addr->q_unix, errp);
         break;
 
     case SOCKET_ADDRESS_KIND_FD:
@@ -915,7 +897,6 @@ int socket_listen(SocketAddress *addr, Error **errp)
     default:
         abort();
     }
-    qemu_opts_del(opts);
     return fd;
 }
 
