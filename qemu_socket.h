@@ -43,10 +43,10 @@ int send_all(int fd, const void *buf, int len1);
  */
 typedef void NonBlockingConnectHandler(int fd, void *opaque);
 
-int inet_listen_opts(QemuOpts *opts, int port_offset, Error **errp);
+int inet_listen_opts(IPSocketAddress *addr, int port_offset, Error **errp);
 int inet_listen(const char *str, char *ostr, int olen,
                 int socktype, int port_offset, Error **errp);
-int inet_connect_opts(QemuOpts *opts, Error **errp,
+int inet_connect_opts(IPSocketAddress *addr, Error **errp,
                       NonBlockingConnectHandler *callback, void *opaque);
 int inet_connect(const char *str, Error **errp);
 int inet_nonblocking_connect(const char *str,
