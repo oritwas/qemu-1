@@ -20,9 +20,6 @@ struct OptsVisitor
 {
     Visitor visitor;
 
-    /* Ownership remains with opts_visitor_new()'s caller. */
-    const QemuOpts *opts_root;
-
     unsigned depth;
 
     /* Non-null iff depth is positive. Each key is a QemuOpt name. Each value
@@ -36,9 +33,9 @@ struct OptsVisitor
     GQueue *repeated_opts;
     bool repeated_opts_first;
 
-    /* If "opts_root->id" is set, reinstantiate it as a fake QemuOpt for
-     * uniformity. Only its "name" and "str" fields are set. "fake_id_opt" does
-     * not survive or escape the OptsVisitor object.
+    /* If the "id" is set on the QemuOpts, reinstantiate it as a fake QemuOpt
+     * for uniformity. Only its "name" and "str" fields are set. "fake_id_opt"
+     * does not survive or escape the OptsVisitor object.
      */
     QemuOpt *fake_id_opt;
 };
@@ -77,29 +74,9 @@ opts_start_struct(Visitor *v, void **obj, const char *kind,
                   const char *name, size_t size, Error **errp)
 {
     OptsVisitor *ov = DO_UPCAST(OptsVisitor, visitor, v);
-    const QemuOpt *opt;
 
     *obj = g_malloc0(size > 0 ? size : 1);
-    if (ov->depth++ > 0) {
-        return;
-    }
-
-    ov->unprocessed_opts = g_hash_table_new_full(&g_str_hash, &g_str_equal,
-                                                 NULL, &destroy_list);
-    QTAILQ_FOREACH(opt, &ov->opts_root->head, next) {
-        /* ensured by qemu-option.c::opts_do_parse() */
-        assert(strcmp(opt->name, "id") != 0);
-
-        opts_visitor_insert(ov->unprocessed_opts, opt);
-    }
-
-    if (ov->opts_root->id != NULL) {
-        ov->fake_id_opt = g_malloc0(sizeof *ov->fake_id_opt);
-
-        ov->fake_id_opt->name = "id";
-        ov->fake_id_opt->str = ov->opts_root->id;
-        opts_visitor_insert(ov->unprocessed_opts, ov->fake_id_opt);
-    }
+    ov->depth++;
 }
 
 
@@ -372,6 +349,7 @@ OptsVisitor *
 opts_visitor_new(const QemuOpts *opts)
 {
     OptsVisitor *ov;
+    const QemuOpt *opt;
 
     ov = g_malloc0(sizeof *ov);
 
@@ -403,8 +381,22 @@ opts_visitor_new(const QemuOpts *opts)
 
     ov->visitor.start_optional = &opts_start_optional;
 
-    ov->opts_root = opts;
+    ov->unprocessed_opts = g_hash_table_new_full(&g_str_hash, &g_str_equal,
+                                                 NULL, &destroy_list);
+    QTAILQ_FOREACH(opt, &opts->head, next) {
+        /* ensured by qemu-option.c::opts_do_parse() */
+        assert(strcmp(opt->name, "id") != 0);
 
+        opts_visitor_insert(ov->unprocessed_opts, opt);
+    }
+
+    if (opts->id != NULL) {
+        ov->fake_id_opt = g_malloc0(sizeof *ov->fake_id_opt);
+
+        ov->fake_id_opt->name = "id";
+        ov->fake_id_opt->str = opts->id;
+        opts_visitor_insert(ov->unprocessed_opts, ov->fake_id_opt);
+    }
     return ov;
 }
 
