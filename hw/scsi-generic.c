@@ -479,7 +479,8 @@ static SCSIRequest *scsi_new_request(SCSIDevice *d, uint32_t tag, uint32_t lun,
 }
 
 static Property scsi_generic_properties[] = {
-    DEFINE_BLOCK_PROPERTIES(SCSIDevice, conf),
+    DEFINE_PROP_DRIVE("drive", SCSIDiskState, qdev.conf.bs),
+    DEFINE_PROP_INT32("bootindex", _state, _conf.bootindex, -1),
     DEFINE_PROP_END_OF_LIST(),
 };
 
