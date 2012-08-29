@@ -229,4 +229,15 @@ static inline size_t hbitmap_iter_next_word(HBitmapIter *hbi, unsigned long *p_c
 }
 
 
+/**
+ * hbitmap_copy:
+ * @dest: HBitmap to copy to.
+ * @src: HBitmap to copy from.
+ *
+ * Copy from one HBitmap to another, efficiently skipping zero
+ * areas in both the source and the destination.  The two bitmaps
+ * must have the same size and granularity.
+ */
+void hbitmap_copy(HBitmap *dest, HBitmap *src);
+
 #endif

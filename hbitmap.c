@@ -368,6 +368,54 @@ bool hbitmap_get(const HBitmap *hb, uint64_t item)
     return (hb->levels[HBITMAP_LEVELS - 1][pos >> BITS_PER_LEVEL] & bit) != 0;
 }
 
+void hbitmap_copy(HBitmap *dst, HBitmap *src)
+{
+    HBitmapIter dst_iter, src_iter;
+    size_t dst_pos, src_pos, old_dst_pos;
+    unsigned long dst_cur, src_cur;
+
+    assert(dst->granularity == src->granularity);
+    assert(dst->size == src->size);
+
+    hbitmap_iter_init(&dst_iter, dst, 0);
+    hbitmap_iter_init(&src_iter, src, 0);
+
+    dst_pos = hbitmap_iter_next_word(&dst_iter, &dst_cur);
+    src_pos = hbitmap_iter_next_word(&src_iter, &src_cur);
+
+    while (dst_pos != -1) {
+        if (dst_pos < src_pos) {
+            /* Clear all words up to src_pos.  Do it one by one,
+             * on the assumption that dst is sparse */
+            old_dst_pos = dst_pos;
+            dst_pos = hbitmap_iter_next_word(&dst_iter, &dst_cur);
+            dst->levels[HBITMAP_LEVELS - 1][old_dst_pos] = 0;
+            hb_reset_between(dst, HBITMAP_LEVELS - 2, old_dst_pos, old_dst_pos);
+            continue;
+        }
+
+        /* Copy one word from source to destination.  Update the
+         * upper levels if the corresponding word in dst was zero.
+         */
+        dst->levels[HBITMAP_LEVELS - 1][src_pos] = src_cur;
+        if (dst_pos > src_pos) {
+            hb_set_between(dst, HBITMAP_LEVELS - 2, src_pos, src_pos);
+        } else {
+            dst_pos = hbitmap_iter_next_word(&dst_iter, &dst_cur);
+        }
+        src_pos = hbitmap_iter_next_word(&src_iter, &src_cur);
+    }
+
+    /* Copy everything past the last 'one' in dst.  */
+    while (src_pos != -1) {
+        dst->levels[HBITMAP_LEVELS - 1][src_pos] = src_cur;
+        hb_set_between(dst, HBITMAP_LEVELS - 2, src_pos, src_pos);
+        src_pos = hbitmap_iter_next_word(&src_iter, &src_cur);
+    }
+
+    dst->count = src->count;
+}
+
 void hbitmap_free(HBitmap *hb)
 {
     unsigned i = HBITMAP_LEVELS;

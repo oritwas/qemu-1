@@ -24,6 +24,7 @@ typedef struct TestHBitmapData {
     unsigned long *bits;
     size_t         size;
     int            granularity;
+    int            id;
 } TestHBitmapData;
 
 
@@ -329,6 +330,52 @@ static void test_hbitmap_reset(TestHBitmapData *data,
     hbitmap_test_set(data, L3 / 2, L3);
 }
 
+static void test_hbitmap_copy(TestHBitmapData *data,
+                              const void *p_id)
+{
+    int id = *(int *)p_id;
+    HBitmap *aux;
+
+    hbitmap_test_init(data, L3, 0);
+    aux = hbitmap_alloc(L3, 0);
+
+    /* Add some bits to data.  */
+    if (id < 1 || id > 7) {
+        hbitmap_test_set(data, 2, 2);
+    }
+    if (id < 2 || id > 6) {
+        hbitmap_test_set(data, L1 * 3, L1 * 2);
+    }
+    if (id < 3 || id > 5) {
+        hbitmap_test_set(data, L1 * 7, 4);
+    }
+    if (id < 4) {
+        hbitmap_test_set(data, L1 * 10, 4);
+    }
+
+    /* Add some bits to the copy destination.  */
+    if (id < 5) {
+        hbitmap_set(aux, 0, 1);
+    }
+    if (id < 6) {
+        hbitmap_set(aux, L1 * 4, 2);
+    }
+    if (id < 7) {
+        hbitmap_set(aux, L1 * 7, 4);
+    }
+
+    hbitmap_copy(aux, data->hb);
+    hbitmap_test_check(data, 0);
+
+    /* Swap the two, the new data bitmap must still be the same as the
+     * check vector.
+     */
+    hbitmap_free(data->hb);
+    data->hb = aux;
+
+    hbitmap_test_check(data, 0);
+}
+
 static void test_hbitmap_granularity(TestHBitmapData *data,
                                      const void *unused)
 {
@@ -375,6 +422,17 @@ static void test_hbitmap_iter_granularity(TestHBitmapData *data,
     g_assert_cmpint(hbitmap_iter_next(&hbi), <, 0);
 }
 
+static void hbitmap_test_add_with_id(const char *testpath,
+                                     void (*test_func)(TestHBitmapData *data, const void *user_data),
+                                     int id)
+{
+    int *p_id = g_malloc0(sizeof(int));
+    *p_id = id;
+
+    g_test_add(testpath, TestHBitmapData, p_id, NULL, test_func,
+               hbitmap_test_teardown);
+}
+
 static void hbitmap_test_add(const char *testpath,
                                    void (*test_func)(TestHBitmapData *data, const void *user_data))
 {
@@ -402,6 +460,15 @@ int main(int argc, char **argv)
     hbitmap_test_add("/hbitmap/reset/empty", test_hbitmap_reset_empty);
     hbitmap_test_add("/hbitmap/reset/general", test_hbitmap_reset);
     hbitmap_test_add("/hbitmap/granularity", test_hbitmap_granularity);
+    hbitmap_test_add_with_id("/hbitmap/copy/0", test_hbitmap_copy, 0);
+    hbitmap_test_add_with_id("/hbitmap/copy/1", test_hbitmap_copy, 1);
+    hbitmap_test_add_with_id("/hbitmap/copy/2", test_hbitmap_copy, 2);
+    hbitmap_test_add_with_id("/hbitmap/copy/3", test_hbitmap_copy, 3);
+    hbitmap_test_add_with_id("/hbitmap/copy/4", test_hbitmap_copy, 4);
+    hbitmap_test_add_with_id("/hbitmap/copy/5", test_hbitmap_copy, 5);
+    hbitmap_test_add_with_id("/hbitmap/copy/6", test_hbitmap_copy, 6);
+    hbitmap_test_add_with_id("/hbitmap/copy/7", test_hbitmap_copy, 7);
+    hbitmap_test_add_with_id("/hbitmap/copy/8", test_hbitmap_copy, 8);
     g_test_run();
 
     return 0;
