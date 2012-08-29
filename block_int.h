@@ -270,7 +270,12 @@ struct BlockDriverState {
     bool iostatus_enabled;
     BlockDeviceIoStatus iostatus;
     char device_name[32];
+
     HBitmap *dirty_bitmap;
+    int dirty_usage;
+    QEMUMmapArea persistent_mmap;
+    HBitmap *persistent_bitmap;
+
     int in_use; /* users other than guest access, eg. block migration */
     QTAILQ_ENTRY(BlockDriverState) list;
 

@@ -1273,6 +1273,7 @@ static void bdrv_move_feature_fields(BlockDriverState *bs_dest,
 
     /* dirty bitmap */
     bs_dest->dirty_bitmap       = bs_src->dirty_bitmap;
+    bs_dest->dirty_usage        = bs_src->dirty_usage;
 
     /* job */
     bs_dest->in_use             = bs_src->in_use;
@@ -3979,6 +3980,16 @@ int coroutine_fn bdrv_co_flush(BlockDriverState *bs)
         }
     }
 
+    /* The persistent bitmap is flushed synchronously; we may want to
+     * move this to a thread pool.
+     */
+    if (bs->persistent_bitmap) {
+        ret = qemu_mmap_flush(&bs->persistent_mmap);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
     /* But don't actually force it to the disk with cache=unsafe */
     if (bs->open_flags & BDRV_O_NO_FLUSH) {
         goto flush_parent;
@@ -4229,9 +4240,17 @@ void *qemu_blockalign(BlockDriverState *bs, size_t size)
 void bdrv_enable_dirty_tracking(BlockDriverState *bs, int granularity)
 {
     int64_t bitmap_size;
+    int granularity_bits;
 
     assert((granularity & (granularity - 1)) == 0);
     granularity >>= BDRV_SECTOR_BITS;
+    granularity_bits = ffs(granularity) - 1;
+    bs->dirty_usage++;
+    if (bs->dirty_usage != 1) {
+        assert(granularity_bits == hbitmap_granularity(bs->dirty_bitmap));
+        return;
+    }
+
     assert(!bs->dirty_bitmap);
     bitmap_size = (bdrv_getlength(bs) >> BDRV_SECTOR_BITS);
     bs->dirty_bitmap = hbitmap_alloc(bitmap_size, ffs(granularity) - 1);
@@ -4239,9 +4258,96 @@ void bdrv_enable_dirty_tracking(BlockDriverState *bs, int granularity)
 
 void bdrv_disable_dirty_tracking(BlockDriverState *bs)
 {
+    if (bs->dirty_usage == 0) {
+        return;
+    }
+
+    bs->dirty_usage--;
+    if (bs->dirty_usage != 0) {
+        return;
+    }
+
+    hbitmap_free(bs->dirty_bitmap);
+    bs->dirty_bitmap = NULL;
+    bdrv_disable_persistent_dirty_tracking(bs);
+}
+
+void bdrv_enable_persistent_dirty_tracking(BlockDriverState *bs, const char *file,
+                                           Error **errp)
+{
+    int rc;
+    int granularity_bits;
+    int64_t bitmap_size;
+    size_t file_size;
+    QEMUMmapArea mm;
+    HBitmap *new_bitmap;
+    bool load;
+
+    assert(bs->dirty_usage > 0);
+
+    granularity_bits = hbitmap_granularity(bs->dirty_bitmap);
+    bitmap_size = (bdrv_getlength(bs) >> BDRV_SECTOR_BITS);
+    file_size = hbitmap_required_size(bitmap_size, granularity_bits);
+
+    load = access(file, R_OK) >= 0;
+    if (bdrv_in_use(bs) && load) {
+        error_set(errp, QERR_DEVICE_IN_USE, bdrv_get_device_name(bs));
+        return;
+    }
+
+    /*
+     * Do not touch fields in BS until we're sure we can complete
+     * successfully.
+     */
+    rc = qemu_mmap_alloc(&mm, file, file_size);
+    if (rc < 0) {
+        error_set(errp, QERR_OPEN_FILE_FAILED, file);
+        return;
+    }
+
+    new_bitmap = hbitmap_alloc_with_data(bitmap_size, granularity_bits, mm.mem);
+    if (!load) {
+        hbitmap_copy(new_bitmap, bs->dirty_bitmap);
+        rc = qemu_mmap_flush(&mm);
+        if (rc < 0) {
+            error_set(errp, QERR_OPEN_FILE_FAILED, file);
+	    hbitmap_free(new_bitmap);
+            qemu_mmap_free(&mm);
+            return;
+        }
+    }
+
+    /*
+     * Now we can complete.
+     */
+    if (bs->persistent_bitmap) {
+        bdrv_disable_persistent_dirty_tracking(bs);
+    }
+
+    bs->persistent_mmap = mm;
+    bs->persistent_bitmap = new_bitmap;
+    if (load) {
+        hbitmap_copy(bs->dirty_bitmap, new_bitmap);
+    }
+}
+
+void bdrv_disable_persistent_dirty_tracking(BlockDriverState *bs)
+{
+    if (!bs->persistent_bitmap) {
+        return;
+    }
+
+    hbitmap_free(bs->persistent_bitmap);
+    bs->persistent_bitmap = NULL;
+    qemu_mmap_free(&bs->persistent_mmap);
+}
+
+int bdrv_get_dirty_tracking_granularity(BlockDriverState *bs)
+{
     if (bs->dirty_bitmap) {
-        hbitmap_free(bs->dirty_bitmap);
-        bs->dirty_bitmap = NULL;
+        return BDRV_SECTOR_SIZE << hbitmap_granularity(bs->dirty_bitmap);
+    } else {
+        return 0;
     }
 }
 
@@ -4263,12 +4369,35 @@ void bdrv_set_dirty(BlockDriverState *bs, int64_t cur_sector,
                     int nr_sectors)
 {
     hbitmap_set(bs->dirty_bitmap, cur_sector, nr_sectors);
+    if (bs->persistent_bitmap) {
+        hbitmap_set(bs->persistent_bitmap, cur_sector, nr_sectors);
+    }
 }
 
 void bdrv_reset_dirty(BlockDriverState *bs, int64_t cur_sector,
                       int nr_sectors)
 {
     hbitmap_reset(bs->dirty_bitmap, cur_sector, nr_sectors);
+}
+
+int bdrv_flush_dirty_tracking(BlockDriverState *bs, bool set)
+{
+    /* Because of the way bdrv_reset_dirty and bdrv_set_dirty work,
+     * bs->persistent_bitmap will always be a subset of bs->dirty_bitmap,
+     * and this hbitmap_copy will only remove bits rather than add them.
+     *
+     * Because no bits are added to the persistent bitmap, the on-disk
+     * bitmap is still a conservative approximation of the in-memory
+     * bitmap; we do not need to flush to disk, the OS will take care of
+     * writeback in due time.
+     */
+    if (bs->persistent_bitmap) {
+        hbitmap_copy(bs->persistent_bitmap, bs->dirty_bitmap);
+        if (set) {
+            return qemu_mmap_flush(&bs->persistent_mmap);
+        }
+    }
+    return 0;
 }
 
 int64_t bdrv_get_dirty_count(BlockDriverState *bs)

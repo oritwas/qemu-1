@@ -363,6 +363,11 @@ void bdrv_reset_dirty(BlockDriverState *bs, int64_t cur_sector, int nr_sectors);
 void bdrv_dirty_iter_init(BlockDriverState *bs, struct HBitmapIter *hbi);
 int64_t bdrv_get_dirty_count(BlockDriverState *bs);
 
+int bdrv_get_dirty_tracking_granularity(BlockDriverState *bs);
+void bdrv_enable_persistent_dirty_tracking(BlockDriverState *bs, const char *file, Error **errp);
+void bdrv_disable_persistent_dirty_tracking(BlockDriverState *bs);
+int bdrv_flush_dirty_tracking(BlockDriverState *bs, bool set);
+
 void bdrv_enable_copy_on_read(BlockDriverState *bs);
 void bdrv_disable_copy_on_read(BlockDriverState *bs);
 
