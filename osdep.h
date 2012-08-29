@@ -134,6 +134,16 @@ void qemu_vfree(void *ptr);
 
 #endif
 
+typedef struct QEMUMmapArea {
+    int fd;
+    void *mem;
+    size_t size;
+} QEMUMmapArea;
+
+int qemu_mmap_alloc(QEMUMmapArea *mm, const char *path, size_t size);
+int qemu_mmap_flush(QEMUMmapArea *mm);
+void qemu_mmap_free(QEMUMmapArea *mm);
+
 int qemu_madvise(void *addr, size_t len, int advice);
 
 #if defined(__HAIKU__) && defined(__i386__)

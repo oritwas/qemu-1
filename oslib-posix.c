@@ -61,6 +61,7 @@ static int running_on_valgrind = -1;
 #ifdef CONFIG_LINUX
 #include <sys/syscall.h>
 #endif
+#include <sys/mman.h>
 
 int qemu_get_thread_id(void)
 {
@@ -225,4 +226,50 @@ int qemu_utimens(const char *path, const struct timespec *times)
     }
 
     return utimes(path, &tv[0]);
+}
+
+int qemu_mmap_alloc(QEMUMmapArea *mm, const char *path, size_t size)
+{
+    int fd = -1;
+    char *mem = NULL;
+    int save_errno;
+
+    fd = qemu_open(path, O_RDWR | O_CREAT, 0666);
+    if (fd < 0) {
+        goto fail;
+    }
+
+    if (ftruncate(fd, size) < 0) {
+        goto fail;
+    }
+
+    mem = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (!mem) {
+        goto fail;
+    }
+
+    mm->fd = fd;
+    mm->mem = mem;
+    mm->size = size;
+    return 0;
+
+fail:
+    save_errno = errno;
+    if (fd >= 0) {
+        close(fd);
+        unlink(path);
+    }
+    return -save_errno;
+}
+
+int qemu_mmap_flush(QEMUMmapArea *mm)
+{
+    int rc = msync(mm->mem, mm->size, MS_SYNC);
+    return rc < 0 ? -errno : 0;
+}
+
+void qemu_mmap_free(QEMUMmapArea *mm)
+{
+    munmap(mm->mem, mm->size);
+    close(mm->fd);
 }

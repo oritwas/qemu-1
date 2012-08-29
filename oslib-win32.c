@@ -157,3 +157,62 @@ int qemu_get_thread_id(void)
 {
     return GetCurrentThreadId();
 }
+
+int qemu_mmap_alloc(QEMUMmapArea *mm, const char *path, size_t size)
+{
+    int fd = -1;
+    char *mem = NULL;
+
+    HANDLE hFile, hMapping;
+    int save_errno;
+
+    fd = qemu_open(path, O_RDWR | O_CREAT, 0666);
+    if (fd < 0) {
+        goto fail;
+    }
+
+    hFile = (HANDLE)_get_osfhandle(fd);
+    if (ftruncate(fd, size) < 0) {
+        goto fail;
+    }
+
+    hMapping = CreateFileMapping(hFile, NULL, PAGE_EXECUTE_READWRITE,
+                                 0, 0, NULL);
+    if (!hMapping) {
+        goto fail;
+    }
+
+    mem = MapViewOfFileEx(hMapping, FILE_MAP_WRITE, 0, 0, size, NULL);
+    CloseHandle(hMapping);
+    if (mem) {
+        goto fail;
+    }
+
+    mm->fd = fd;
+    mm->mem = mem;
+    mm->size = size;
+    return 0;
+
+fail:
+    save_errno = errno;
+    if (fd >= 0) {
+        close(fd);
+        unlink(path);
+    }
+    return -save_errno;
+}
+
+int qemu_mmap_flush(QEMUMmapArea *mm)
+{
+    int rc;
+
+    FlushViewOfFile(mm->mem, mm->size);
+    rc = qemu_fdatasync(mm->fd);
+    return rc < 0 ? -errno : 0;
+}
+
+void qemu_mmap_free(QEMUMmapArea *mm)
+{
+    UnmapViewOfFile(mm->mem);
+    close(mm->fd);
+}
