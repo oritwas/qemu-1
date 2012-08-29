@@ -64,6 +64,31 @@ struct HBitmapIter {
 HBitmap *hbitmap_alloc(uint64_t size, int granularity);
 
 /**
+ * hbitmap_required_size:
+ * @size: Number of bits in the bitmap.
+ * @granularity: Granularity of the bitmap.
+ *
+ * Return the number of bytes that are needed for a bitmap with the
+ * given size and granularity.
+ *
+ * A block of this size can then be passed to @hbitmap_alloc_with_data.
+ */
+size_t hbitmap_required_size(uint64_t size, int granularity);
+
+/**
+ * hbitmap_alloc_with_data:
+ * @size: Number of bits in the bitmap.
+ * @granularity: Granularity of the bitmap.
+ * @data: Pointer to a data block that will be used for the bottom level
+ * of the HBitmap.
+ *
+ * Allocate a new HBitmap, using a client-provided data block for the
+ * actual bitmap and allocating memory only for the compressed levels.
+ * If @data is NULL, this function is equivalent to @hbitmap_alloc.
+ */
+HBitmap *hbitmap_alloc_with_data(uint64_t size, int granularity, void *data);
+
+/**
  * hbitmap_empty:
  * @hb: HBitmap to operate on.
  *
