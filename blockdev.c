@@ -1222,19 +1222,10 @@ void qmp_drive_mirror(const char *device, const char *target,
         mode = NEW_IMAGE_MODE_ABSOLUTE_PATHS;
     }
     if (!has_granularity) {
-        granularity = 0;
+        granularity = -1;
     }
     if (!has_buf_size) {
         buf_size = DEFAULT_MIRROR_BUF_SIZE;
-    }
-
-    if (granularity != 0 && (granularity < 512 || granularity > 1048576 * 64)) {
-        error_set(errp, QERR_INVALID_PARAMETER, device);
-        return;
-    }
-    if (granularity & (granularity - 1)) {
-        error_set(errp, QERR_INVALID_PARAMETER, device);
-        return;
     }
 
     bs = bdrv_find(device);

@@ -550,21 +550,8 @@ void mirror_start(BlockDriverState *bs, BlockDriverState *target,
                   BlockDriverCompletionFunc *cb,
                   void *opaque, Error **errp)
 {
+    Error *local_err = NULL;
     MirrorBlockJob *s;
-
-    if (granularity == 0) {
-        /* Choose the default granularity based on the target file's cluster
-         * size, clamped between 4k and 64k.  */
-        BlockDriverInfo bdi;
-        if (bdrv_get_info(target, &bdi) >= 0 && bdi.cluster_size != 0) {
-            granularity = MAX(4096, bdi.cluster_size);
-            granularity = MIN(65536, granularity);
-        } else {
-            granularity = 65536;
-        }
-    }
-
-    assert ((granularity & (granularity - 1)) == 0);
 
     if ((on_source_error == BLOCKDEV_ON_ERROR_STOP ||
          on_source_error == BLOCKDEV_ON_ERROR_ENOSPC) &&
@@ -573,23 +560,34 @@ void mirror_start(BlockDriverState *bs, BlockDriverState *target,
         return;
     }
 
+    bdrv_enable_dirty_tracking(bs, granularity, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
     s = block_job_create(&mirror_job_type, bs, speed, cb, opaque, errp);
     if (!s) {
-        return;
+        goto fail;
     }
 
     s->on_source_error = on_source_error;
     s->on_target_error = on_target_error;
     s->target = target;
     s->mode = mode;
+
+    granularity = bdrv_get_dirty_tracking_granularity(bs);
     s->granularity = granularity;
     s->buf_size = MAX(buf_size, granularity);
 
-    bdrv_enable_dirty_tracking(bs, granularity);
     bdrv_set_enable_write_cache(s->target, true);
     bdrv_set_on_error(s->target, on_target_error, on_target_error);
     bdrv_iostatus_enable(s->target);
     s->common.co = qemu_coroutine_create(mirror_run);
     trace_mirror_start(bs, s, s->common.co, opaque);
     qemu_coroutine_enter(s->common.co, s);
+    return;
+
+fail:
+    bdrv_disable_dirty_tracking(bs);
 }

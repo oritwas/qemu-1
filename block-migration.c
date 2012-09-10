@@ -280,7 +280,7 @@ static void init_blk_migration_it(void *opaque, BlockDriverState *bs)
         alloc_aio_bitmap(bmds);
         drive_get_ref(drive_get_by_blockdev(bs));
         bdrv_set_in_use(bs, 1);
-        bdrv_enable_dirty_tracking(bs, BLOCK_SIZE);
+        bdrv_enable_dirty_tracking(bs, BLOCK_SIZE, NULL);
 
         block_mig_state.total_sector_sum += sectors;
 

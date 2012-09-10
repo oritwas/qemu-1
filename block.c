@@ -4237,23 +4237,51 @@ void *qemu_blockalign(BlockDriverState *bs, size_t size)
     return qemu_memalign((bs && bs->buffer_alignment) ? bs->buffer_alignment : 512, size);
 }
 
-void bdrv_enable_dirty_tracking(BlockDriverState *bs, int granularity)
+void bdrv_enable_dirty_tracking(BlockDriverState *bs, int granularity,
+                                Error **errp)
 {
     int64_t bitmap_size;
     int granularity_bits;
 
-    assert((granularity & (granularity - 1)) == 0);
-    granularity >>= BDRV_SECTOR_BITS;
-    granularity_bits = ffs(granularity) - 1;
-    bs->dirty_usage++;
-    if (bs->dirty_usage != 1) {
-        assert(granularity_bits == hbitmap_granularity(bs->dirty_bitmap));
+    if (granularity == -1) {
+        if (bs->dirty_usage != 0) {
+            granularity = bdrv_get_dirty_tracking_granularity(bs);
+        } else {
+            /* Choose the default granularity based on the block device's cluster
+             * size, clamped between 4k and 64k.  */
+            BlockDriverInfo bdi;
+            if (bdrv_get_info(bs, &bdi) >= 0 && bdi.cluster_size != 0) {
+                granularity = MAX(4096, bdi.cluster_size);
+                granularity = MIN(65536, granularity);
+            } else {
+                granularity = 65536;
+            }
+        }
+    }
+
+    if (granularity < 512 || granularity > 1048576 * 64) {
+        error_set(errp, QERR_INVALID_PARAMETER, bdrv_get_device_name(bs));
+        return;
+    }
+    if (granularity & (granularity - 1)) {
+        error_set(errp, QERR_INVALID_PARAMETER, bdrv_get_device_name(bs));
         return;
     }
 
-    assert(!bs->dirty_bitmap);
+    granularity_bits = ffs(granularity) - 1 - BDRV_SECTOR_BITS;
+    if (bs->dirty_usage != 0) {
+        if (granularity_bits == hbitmap_granularity(bs->dirty_bitmap)) {
+            bs->dirty_usage++;
+        } else {
+            error_set(errp, QERR_INVALID_PARAMETER, bdrv_get_device_name(bs));
+        }
+        return;
+    }
+
+    bs->dirty_usage++;
+    assert(!bs->dirty_bitmap && !bs->persistent_bitmap);
     bitmap_size = (bdrv_getlength(bs) >> BDRV_SECTOR_BITS);
-    bs->dirty_bitmap = hbitmap_alloc(bitmap_size, ffs(granularity) - 1);
+    bs->dirty_bitmap = hbitmap_alloc(bitmap_size, granularity_bits);
 }
 
 void bdrv_disable_dirty_tracking(BlockDriverState *bs)

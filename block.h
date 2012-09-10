@@ -355,7 +355,8 @@ void bdrv_set_buffer_alignment(BlockDriverState *bs, int align);
 void *qemu_blockalign(BlockDriverState *bs, size_t size);
 
 struct HBitmapIter;
-void bdrv_enable_dirty_tracking(BlockDriverState *bs, int granularity);
+void bdrv_enable_dirty_tracking(BlockDriverState *bs, int granularity,
+                                Error **errp);
 void bdrv_disable_dirty_tracking(BlockDriverState *bs);
 int bdrv_get_dirty(BlockDriverState *bs, int64_t sector);
 void bdrv_set_dirty(BlockDriverState *bs, int64_t cur_sector, int nr_sectors);
