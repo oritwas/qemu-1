@@ -38,6 +38,7 @@ struct DriveInfo {
     const char *serial;
     QTAILQ_ENTRY(DriveInfo) next;
     int refcount;
+    int dirty_use;
 };
 
 DriveInfo *drive_get(BlockInterfaceType type, int bus, int unit);

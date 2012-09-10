@@ -1323,6 +1323,61 @@ void qmp_drive_mirror(const char *device, const char *target,
     drive_get_ref(drive_get_by_blockdev(bs));
 }
 
+void qmp_blockdev_dirty_enable(const char *device, const char *file,
+                               bool has_granularity, uint32_t granularity,
+                               Error **errp)
+{
+    BlockDriverState *bs;
+    DriveInfo *drv;
+    Error *local_err = NULL;
+
+    bs = bdrv_find(device);
+    if (!bs) {
+        error_set(errp, QERR_DEVICE_NOT_FOUND, device);
+        return;
+    }
+
+    drv = drive_get_by_blockdev(bs);
+    bdrv_enable_dirty_tracking(bs, granularity, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    /* Release previous usage of dirty bitmap.  */
+    if (drv->dirty_use) {
+        bdrv_disable_persistent_dirty_tracking(bs);
+        bdrv_disable_dirty_tracking(bs);
+    }
+    drv->dirty_use = true;
+
+    bdrv_enable_persistent_dirty_tracking(bs, file, errp);
+}
+
+void qmp_blockdev_dirty_disable(const char *device, bool has_force, bool force, Error **errp)
+{
+    BlockDriverState *bs = bdrv_find(device);
+    DriveInfo *drv;
+
+    if (!bs) {
+        error_set(errp, QERR_DEVICE_NOT_FOUND, device);
+        return;
+    }
+
+    drv = drive_get_by_blockdev(bs);
+    if (!drv->dirty_use) {
+        error_setg(errp, "dirty tracking not enabled on device '%s'", device);
+        return;
+    }
+
+    if (has_force && force) {
+        bdrv_disable_persistent_dirty_tracking(bs);
+    }
+
+    bdrv_disable_dirty_tracking(bs);
+    drv->dirty_use = false;
+}
+
 static BlockJob *find_block_job(const char *device)
 {
     BlockDriverState *bs;

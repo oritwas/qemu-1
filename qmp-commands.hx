@@ -2589,6 +2589,71 @@ EQMP
     },
 
     {
+        .name       = "blockdev-dirty-enable",
+        .args_type  = "device:s,file:s,granularity:i?",
+        .mhandler.cmd_new = qmp_marshal_input_blockdev_dirty_enable,
+    },
+SQMP
+blockdev-dirty-enable
+---------------------
+
+Start tracking dirty blocks for a block device.  Dirty blocks will
+be written to an on-disk file, with one bit per block and an arbitrary
+granularity.  If the file already exists, the dirty bitmap is loaded
+from the file.
+
+It is not an error to use this command if the dirty bitmap is already
+active; the dirty blocks will simply be written to a new file from this
+point on.
+
+If the dirty bitmap is already active, or used by something else (for
+example blockdev-drive-mirror), the granularity argument must be absent
+or equal to the active granularity.  Also, in this case the file must
+not exist.
+
+Arguments: 
+
+- device: device name (json-string)
+- file: path to the dirty tracking file (json-string)
+- granularity: granularity of the dirty bitmap (json-int, optional,
+  must be a power of two between 512 and 64M.
+
+The default value of the granularity is, if the image format defines
+a cluster size, the cluster size or 4096, whichever is larger.  If it
+does not define a cluster size, the default value of the granularity
+is 65536.
+
+Example:
+
+-> { "execute": "blockdev-dirty-enable", "arguments": {
+       "device": "ide0-hd0", "path": "/var/lib/libvirt/dirty/image.dbmp" } }
+<- { "return": {} }
+EQMP
+
+    {
+        .name       = "blockdev-dirty-disable",
+        .args_type  = "device:s,force:b",
+        .mhandler.cmd_new = qmp_marshal_input_blockdev_dirty_disable,
+    },
+SQMP
+blockdev-dirty-disable
+----------------------
+
+Arguments: 
+
+- device: device name (json-string)
+- force: true to immediately stop writing to the dirty bitmap file;
+  false to do so only when the last user of the dirty bitmap stops using
+  it (json-boolean).
+
+Example:
+
+-> { "execute": "blockdev-dirty-disable", "arguments": {
+       "device": "ide0-hd0", "force": false } }
+<- { "return": {} }
+EQMP
+
+    {
         .name       = "query-block-jobs",
         .args_type  = "",
         .mhandler.cmd_new = qmp_marshal_input_query_block_jobs,

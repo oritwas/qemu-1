@@ -1025,6 +1025,45 @@ using the specified target.
 ETEXI
 
     {
+        .name       = "dirty_enable",
+        .args_type  = "device:B,file:s,granularity:i?",
+        .params     = "device file [granularity]",
+	"Defaults to MB if no size suffix is specified, ie. B/K/M/G/T",
+        .help       = "initiates tracking of\n\t\t\t"
+                      "dirty blocks for a block device.",
+        .mhandler.cmd = hmp_dirty_enable,
+    },
+STEXI
+@item dirty_enable
+@findex dirty_enable
+Start tracking dirty blocks for a block device.  Dirty blocks will
+be written to an on-disk file, with one bit per block and an arbitrary
+granularity.
+
+If the dirty bitmap is already active, or used by something else (for
+example @command{drive_mirror}), the granularity argument must be absent
+or equal to the active granularity.  The granularity must be a power-of-two
+comprised between 4,096 and 67,108,864.
+ETEXI
+
+    {
+        .name       = "dirty_disable",
+        .args_type  = "force:-f,device:B",
+        .params     = "[-f] device",
+        .help       = "prepares to disable tracking\n\t\t\t"
+                      "dirty blocks of a block device.",
+        .mhandler.cmd = hmp_dirty_disable,
+    },
+STEXI
+@item dirty_disable
+@findex dirty_disable
+Prepare QEMU to stop tracking dirty blocks for a block device.  The
+actual end of dirty tracking could be delayed while the dirty bitmap
+is in use by another command such as @command{drive_mirror}, unless
+the @option{-f} option is used.
+ETEXI
+
+    {
         .name       = "drive_add",
         .args_type  = "pci_addr:s,opts:s",
         .params     = "[[<domain>:]<bus>:]<slot>\n"

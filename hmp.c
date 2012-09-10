@@ -1259,3 +1259,30 @@ void hmp_screen_dump(Monitor *mon, const QDict *qdict)
     qmp_screendump(filename, &err);
     hmp_handle_error(mon, &err);
 }
+
+void hmp_dirty_enable(Monitor *mon, const QDict *qdict)
+{
+    const char *device = qdict_get_str(qdict, "device");
+    const char *file = qdict_get_str(qdict, "file");
+    bool has_granularity = qdict_haskey(qdict, "granularity");
+    int granularity = -1;
+    Error *errp = NULL;
+
+    if (has_granularity) {
+        granularity = qdict_get_int(qdict, "granularity");
+    }
+
+    qmp_blockdev_dirty_enable(device, file,
+                              has_granularity, granularity, &errp);
+    hmp_handle_error(mon, &errp);
+}
+
+void hmp_dirty_disable(Monitor *mon, const QDict *qdict)
+{
+    const char *device = qdict_get_str(qdict, "device");
+    bool force = qdict_get_try_bool(qdict, "force", false);
+    Error *errp = NULL;
+
+    qmp_blockdev_dirty_disable(device, true, force, &errp);
+    hmp_handle_error(mon, &errp);
+}

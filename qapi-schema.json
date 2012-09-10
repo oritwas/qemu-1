@@ -3024,3 +3024,59 @@
 # Since: 1.3.0
 ##
 { 'command': 'nbd-server-stop' }
+
+##
+# @blockdev-dirty-enable:
+#
+# Start tracking dirty blocks for a block device.  Dirty blocks will
+# be written to an on-disk file, with one bit per block and an arbitrary
+# granularity.  If the file already exists, the dirty bitmap is loaded
+# from the file.
+#
+# It is not an error to use this command if the dirty bitmap is already
+# active; the dirty blocks will simply be written to a new file from this
+# point on.
+#
+# If the dirty bitmap is already active, or used by something else (for
+# example drive-mirror), the granularity argument must be absent or equal
+# to the active granularity.  Also, in this case the file must not exist.
+#
+# @device: the name of the device to track dirty blocks of
+#
+# @filename: the name of the file to write the bitmap to
+#
+# @granularity: #optional granularity of the dirty bitmap, default is 64K
+#               if the image format doesn't have clusters, 4K if the clusters
+#               are smaller than that, else the cluster size.  Must be a
+#               power of 2 between 512 and 64M.
+#
+# Returns: Nothing on success
+#
+# Since: 1.3
+##
+{ 'command': 'blockdev-dirty-enable',
+  'data': {'device': 'str', 'filename': 'str', '*granularity': 'uint32' } }
+
+##
+# @blockdev-dirty-disable:
+#
+# Stop tracking dirty blocks for a block device.  Dirty blocks will
+# be written to an on-disk file, with one bit per block and an arbitrary
+# granularity.
+#
+# If the dirty bitmap is already active, or used by something else (for
+# example blockdev-drive-mirror), the granularity argument must be absent
+# or equal to the active granularity.
+#
+# @device: the name of the device to track dirty blocks of
+#
+# @force: #optional true to immediately stop writing to the dirty
+#         bitmap file; false to do so only when the last user of the
+#         dirty bitmap stops using it (default false)
+#
+# Returns: Nothing on success
+#
+# Since: 1.3
+##
+{ 'command': 'blockdev-dirty-disable',
+  'data': {'device': 'str', '*force': 'bool'} }
