@@ -467,7 +467,7 @@ immediate_exit:
     g_free(s->buf);
     g_free(s->cow_bitmap);
     g_free(s->in_flight_bitmap);
-    bdrv_set_dirty_tracking(bs, 0);
+    bdrv_disable_dirty_tracking(bs);
     bdrv_iostatus_disable(s->target);
     if (s->should_complete && ret == 0) {
         if (bdrv_get_flags(s->target) != bdrv_get_flags(s->common.bs)) {
@@ -570,7 +570,7 @@ void mirror_start(BlockDriverState *bs, BlockDriverState *target,
     s->granularity = granularity;
     s->buf_size = MAX(buf_size, granularity);
 
-    bdrv_set_dirty_tracking(bs, granularity);
+    bdrv_enable_dirty_tracking(bs, granularity);
     bdrv_set_enable_write_cache(s->target, true);
     bdrv_set_on_error(s->target, on_target_error, on_target_error);
     bdrv_iostatus_enable(s->target);

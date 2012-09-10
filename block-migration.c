@@ -260,15 +260,6 @@ static int mig_save_device_bulk(QEMUFile *f, BlkMigDevState *bmds)
     return (bmds->cur_sector >= total_sectors);
 }
 
-static void set_dirty_tracking(int enable)
-{
-    BlkMigDevState *bmds;
-
-    QSIMPLEQ_FOREACH(bmds, &block_mig_state.bmds_list, entry) {
-        bdrv_set_dirty_tracking(bmds->bs, enable ? BLOCK_SIZE : 0);
-    }
-}
-
 static void init_blk_migration_it(void *opaque, BlockDriverState *bs)
 {
     BlkMigDevState *bmds;
@@ -289,6 +280,7 @@ static void init_blk_migration_it(void *opaque, BlockDriverState *bs)
         alloc_aio_bitmap(bmds);
         drive_get_ref(drive_get_by_blockdev(bs));
         bdrv_set_in_use(bs, 1);
+        bdrv_enable_dirty_tracking(bs, BLOCK_SIZE);
 
         block_mig_state.total_sector_sum += sectors;
 
@@ -527,10 +519,9 @@ static void blk_mig_cleanup(void)
 
     bdrv_drain_all();
 
-    set_dirty_tracking(0);
-
     while ((bmds = QSIMPLEQ_FIRST(&block_mig_state.bmds_list)) != NULL) {
         QSIMPLEQ_REMOVE_HEAD(&block_mig_state.bmds_list, entry);
+        bdrv_disable_dirty_tracking(bmds->bs);
         bdrv_set_in_use(bmds->bs, 0);
         drive_put_ref(drive_get_by_blockdev(bmds->bs));
         g_free(bmds->aio_bitmap);
@@ -556,10 +547,8 @@ static int block_save_setup(QEMUFile *f, void *opaque)
     DPRINTF("Enter save live setup submitted %d transferred %d\n",
             block_mig_state.submitted, block_mig_state.transferred);
 
-    init_blk_migration(f);
-
     /* start track dirty blocks */
-    set_dirty_tracking(1);
+    init_blk_migration(f);
 
     ret = flush_blks(f);
     if (ret) {
