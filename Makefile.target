@@ -99,7 +99,6 @@ endif #CONFIG_BSD_USER
 #########################################################
 # System emulator target
 ifdef CONFIG_SOFTMMU
-obj-y += monitor.o
 obj-y += hw/ sysemu/
 LIBS+=-lz
 
@@ -117,7 +116,8 @@ endif
 
 main.o: QEMU_CFLAGS+=$(GPROF_CFLAGS)
 
-GENERATED_HEADERS += hmp-commands.h qmp-commands-old.h
+GENERATED_HEADERS += sysemu/monitor/hmp-commands.h
+GENERATED_HEADERS += sysemu/monitor/qmp-commands-old.h
 
 endif # CONFIG_SOFTMMU
 
@@ -153,16 +153,17 @@ endif
 gdbstub-xml.c: $(TARGET_XML_FILES) $(SRC_PATH)/scripts/feature_to_c.sh
 	$(call quiet-command,rm -f $@ && $(SHELL) $(SRC_PATH)/scripts/feature_to_c.sh $@ $(TARGET_XML_FILES),"  GEN   $(TARGET_DIR)$@")
 
-hmp-commands.h: $(SRC_PATH)/hmp-commands.hx
+sysemu/monitor/hmp-commands.h: $(SRC_PATH)/sysemu/monitor/hmp-commands.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $(TARGET_DIR)$@")
 
-qmp-commands-old.h: $(SRC_PATH)/qmp-commands.hx
+sysemu/monitor/qmp-commands-old.h: $(SRC_PATH)/sysemu/monitor/qmp-commands.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $(TARGET_DIR)$@")
 
 clean:
 	rm -f *.a *~ $(PROGS)
 	rm -f $(shell find . -name '*.[od]')
-	rm -f hmp-commands.h qmp-commands-old.h gdbstub-xml.c
+	rm -f sysemu/monitor/hmp-commands.h sysemu/monitor/qmp-commands-old.h
+	rm -f gdbstub-xml.c
 ifdef CONFIG_TRACE_SYSTEMTAP
 	rm -f *.stp
 endif

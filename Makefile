@@ -345,10 +345,10 @@ TEXIFLAG=$(if $(V),,--quiet)
 qemu-options.texi: $(SRC_PATH)/sysemu/qemu-options.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
 
-qemu-monitor.texi: $(SRC_PATH)/hmp-commands.hx
+qemu-monitor.texi: $(SRC_PATH)/sysemu/monitor/hmp-commands.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
 
-QMP/qmp-commands.txt: $(SRC_PATH)/qmp-commands.hx
+QMP/qmp-commands.txt: $(SRC_PATH)/sysemu/monitor/qmp-commands.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -q < $< > $@,"  GEN   $@")
 
 qemu-img-cmds.texi: $(SRC_PATH)/tools/qemu-img-cmds.hx

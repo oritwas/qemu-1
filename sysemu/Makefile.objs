@@ -1,7 +1,7 @@
 common-obj-y += audio/
 common-obj-y += block/ bt/ char/
 common-obj-y += ui/
-common-obj-y += migration/
+common-obj-y += migration/ monitor/
 common-obj-y += net/
 
 common-obj-$(CONFIG_WIN32) += os-win32.o
@@ -21,7 +21,7 @@ CONFIG_NO_CORE_DUMP = $(if $(subst n,,$(CONFIG_HAVE_CORE_DUMP)),n,y)
 
 obj-y += arch_init.o cpus.o balloon.o ioport.o
 obj-y += memory.o cputlb.o
-obj-y += migration/
+obj-y += monitor/ migration/
 
 obj-$(CONFIG_KVM) += kvm-all.o
 obj-$(CONFIG_NO_KVM) += kvm-stub.o

@@ -38,7 +38,6 @@ endif
 
 common-obj-y = $(block-obj-y)
 common-obj-y += qom/
-common-obj-y += readline.o
 common-obj-y += $(oslib-obj-y)
 
 common-obj-$(CONFIG_WIN32) += version.o
@@ -147,7 +146,6 @@ qapi-obj-y = qapi/
 qapi-obj-y += qapi-types.o qapi-visit.o
 
 common-obj-y += qmp-marshal.o qapi-visit.o qapi-types.o
-common-obj-y += qmp.o hmp.o
 
 universal-obj-y += $(qapi-obj-y)
 
