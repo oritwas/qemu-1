@@ -1406,7 +1406,7 @@ static inline void tcg_out_setcond(TCGContext *s, TCGCond cond, TCGArg ret,
 
 #if defined(CONFIG_SOFTMMU)
 
-#include "../../softmmu_defs.h"
+#include "softmmu_defs.h"
 
 /* Load and compare a TLB entry, and return the result in (p6, p7).
    R2 is loaded with the address of the addend TLB entry.
