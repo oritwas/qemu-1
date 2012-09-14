@@ -136,7 +136,7 @@ M: Avi Kivity <avi@redhat.com>
 M: Marcelo Tosatti <mtosatti@redhat.com>
 L: kvm@vger.kernel.org
 S: Supported
-F: kvm-*
+F: */kvm-*
 F: */kvm.*
 
 PPC
@@ -163,7 +163,6 @@ X86
 M: Stefano Stabellini <stefano.stabellini@eu.citrix.com>
 L: xen-devel@lists.xensource.com
 S: Supported
-F: xen-*
 F: */xen*
 
 Hosts:
@@ -172,7 +171,7 @@ Hosts:
 LINUX
 L: qemu-devel@nongnu.org
 S: Maintained
-F: linux-*
+F: *linux*
 F: linux-headers/
 
 POSIX
@@ -523,18 +522,18 @@ Subsystems
 Audio
 M: Vassili Karpov (malc) <av1474@comtv.ru>
 S: Maintained
-F: audio/
+F: sysemu/audio/
 
 Block
 M: Kevin Wolf <kwolf@redhat.com>
 S: Supported
-F: block*
 F: block/
+F: sysemu/block/
 
 Character Devices
 M: Anthony Liguori <aliguori@us.ibm.com>
 S: Maintained
-F: qemu-char.c
+F: sysemu/char/
 
 CPU
 M: Andreas Färber <afaerber@suse.de>
@@ -546,62 +545,60 @@ Device Tree
 M: Peter Crosthwaite <peter.crosthwaite@petalogix.com>
 M: Alexander Graf <agraf@suse.de>
 S: Maintained
-F: device-tree.[ch]
+F: sysemu/device-tree.[ch]
 
 GDB stub
 M: qemu-devel@nongnu.org
 S: Odd Fixes
-F: gdbstub*
+F: exec/gdbstub*
 F: gdb-xml/
 
 SPICE
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Supported
-F: ui/qemu-spice.h
-F: ui/spice-*.c
-F: audio/spiceaudio.c
+F: sysemu/ui/qemu-spice.h
+F: sysemu/*/spice*.c
 F: hw/qxl*
 
 Graphics
 M: Anthony Liguori <aliguori@us.ibm.com>
 S: Maintained
-F: ui/
+F: sysemu/ui/
 
 Cocoa graphics
 M: Andreas Färber <andreas.faerber@web.de>
 S: Odd Fixes
-F: ui/cocoa.m
+F: sysemu/ui/cocoa.m
 
 Main loop
 M: Anthony Liguori <aliguori@us.ibm.com>
 S: Supported
-F: vl.c
+F: sysemu/vl.c
 
 Monitor (QMP/HMP)
 M: Luiz Capitulino <lcapitulino@redhat.com>
 M: Markus Armbruster <armbru@redhat.com>
 S: Supported
-F: monitor.c
+F: sysemu/monitor
 
 Network device layer
 M: Anthony Liguori <aliguori@us.ibm.com>
 M: Stefan Hajnoczi <stefanha@gmail.com>
 S: Maintained
-F: net/
+F: sysemu/net/
 T: git git://github.com/stefanha/qemu.git net
 
 Network Block Device (NBD)
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Odd Fixes
-F: block/nbd.c
-F: nbd.*
-F: qemu-nbd.c
+F: */nbd.*
+F: tools/qemu-nbd.c
 T: git git://github.com/bonzini/qemu.git nbd-next
 
 SLIRP
 M: Jan Kiszka <jan.kiszka@siemens.com>
 S: Maintained
-F: slirp/
+F: sysemu/slirp/
 T: git git://git.kiszka.org/qemu.git queues/slirp
 
 Tracing
@@ -629,6 +626,7 @@ Linux user
 M: Riku Voipio <riku.voipio@iki.fi>
 S: Maintained
 F: linux-user/
+F: user/
 
 Tiny Code Generator (TCG)
 -------------------------
