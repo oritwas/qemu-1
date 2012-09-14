@@ -90,7 +90,7 @@ user-obj-y += envlist.o path.o
 user-obj-y += host-utils.o
 user-obj-y += cache-utils.o
 user-obj-y += module.o
-user-obj-y += qemu-user.o
+user-obj-y += user/
 user-obj-y += $(trace-obj-y)
 user-obj-y += qom/ exec/
 
