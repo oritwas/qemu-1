@@ -5,9 +5,7 @@ universal-obj-y += qemu-log.o
 
 #######################################################################
 # QObject
-qobject-obj-y = qint.o qstring.o qdict.o qlist.o qfloat.o qbool.o
-qobject-obj-y += qjson.o json-lexer.o json-streamer.o json-parser.o
-qobject-obj-y += qerror.o error.o qemu-error.o
+qobject-obj-y = qobject/ error.o qemu-error.o
 
 universal-obj-y += $(qobject-obj-y)
 
@@ -218,6 +216,7 @@ QEMU_CFLAGS+=$(GLIB_CFLAGS)
 
 nested-vars += \
 	hw-obj-y \
+	qobject-obj-y \
 	qga-obj-y \
 	block-obj-y \
 	qom-obj-y \
