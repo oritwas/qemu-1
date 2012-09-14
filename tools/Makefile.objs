@@ -1,0 +1,6 @@
+tools-obj-y = stub.o
+
+$(obj)/qemu-img.o: $(obj)/qemu-img-cmds.h
+
+$(obj)/qemu-img-cmds.h: $(SRC_PATH)/$(obj)/qemu-img-cmds.hx
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")

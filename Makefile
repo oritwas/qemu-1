@@ -147,23 +147,25 @@ install-libcacard: libcacard.la
 
 ######################################################################
 
-qemu-img.o: qemu-img-cmds.h
-
-qemu-img$(EXESUF): qemu-img.o $(tools-obj-y) $(block-obj-y) $(qapi-obj-y) \
+qemu-img$(EXESUF): tools/qemu-img.o $(tools-obj-y) $(block-obj-y) $(qapi-obj-y) \
                               qapi-visit.o qapi-types.o
-qemu-nbd$(EXESUF): qemu-nbd.o $(tools-obj-y) $(block-obj-y)
-qemu-io$(EXESUF): qemu-io.o cmd.o $(tools-obj-y) $(block-obj-y)
 
-qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o
+	$(call LINK,$^)
+
+qemu-nbd$(EXESUF): tools/qemu-nbd.o $(tools-obj-y) $(block-obj-y)
+	$(call LINK,$^)
+
+qemu-io$(EXESUF): tools/qemu-io.o tools/cmd.o $(tools-obj-y) $(block-obj-y)
+	$(call LINK,$^)
+
+qemu-bridge-helper$(EXESUF): tools/qemu-bridge-helper.o
+	$(call LINK,$^)
 
 vscclient$(EXESUF): $(libcacard-y) $(oslib-obj-y) $(trace-obj-y) qapi/stub.o util/clock.o libcacard/vscclient.o
 	$(call quiet-command,$(CC) $(LDFLAGS) -o $@ $^ $(libcacard_libs) $(LIBS),"  LINK  $@")
 
 fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/virtio-9p-marshal.o $(oslib-obj-y) $(trace-obj-y)
 fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
-
-qemu-img-cmds.h: $(SRC_PATH)/qemu-img-cmds.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")
 
 qemu-ga$(EXESUF): LIBS = $(LIBS_QGA)
 qemu-ga$(EXESUF): QEMU_CFLAGS += -I qga/qapi-generated
@@ -211,7 +213,7 @@ clean:
 	find . -name '*.[od]' -exec rm -f {} +
 	rm -f *.a *.lo $(TOOLS) $(HELPERS-y) qemu-ga TAGS cscope.* *.pod *~ */*~
 	rm -Rf .libs
-	rm -f qemu-img-cmds.h
+	rm -f tools/qemu-img-cmds.h
 	rm -f trace-dtrace.dtrace trace-dtrace.dtrace-timestamp
 	@# May not be present in GENERATED_HEADERS
 	rm -f trace-dtrace.h trace-dtrace.h-timestamp
@@ -353,7 +355,7 @@ qemu-monitor.texi: $(SRC_PATH)/hmp-commands.hx
 QMP/qmp-commands.txt: $(SRC_PATH)/qmp-commands.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -q < $< > $@,"  GEN   $@")
 
-qemu-img-cmds.texi: $(SRC_PATH)/qemu-img-cmds.hx
+qemu-img-cmds.texi: $(SRC_PATH)/tools/qemu-img-cmds.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
 
 qemu.1: qemu-doc.texi qemu-options.texi qemu-monitor.texi

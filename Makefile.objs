@@ -178,8 +178,8 @@ universal-obj-y += $(qapi-obj-y)
 ######################################################################
 # tools-obj-y is shared by qemu-img, qemu-io, qemu-nbd
 
-tools-obj-y += $(oslib-obj-y) $(trace-obj-y) qemu-tool.o
-tools-obj-y += qapi/ util/
+tools-obj-y += $(oslib-obj-y) $(trace-obj-y)
+tools-obj-y += qapi/ tools/ util/
 
 ######################################################################
 # guest agent
