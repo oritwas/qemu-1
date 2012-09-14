@@ -157,11 +157,6 @@ endif
 
 qemu-img.o: qemu-img-cmds.h
 
-tools-obj-y = $(oslib-obj-y) $(trace-obj-y) qemu-tool.o qemu-timer.o \
-	qemu-timer-common.o main-loop.o notify.o monitor-dummy.o \
-	iohandler.o
-tools-obj-$(CONFIG_POSIX) += compatfd.o
-
 qemu-img$(EXESUF): qemu-img.o $(tools-obj-y) $(block-obj-y) $(qapi-obj-y) \
                               qapi-visit.o qapi-types.o
 qemu-nbd$(EXESUF): qemu-nbd.o $(tools-obj-y) $(block-obj-y)
