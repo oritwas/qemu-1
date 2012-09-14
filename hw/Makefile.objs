@@ -1,5 +1,5 @@
 hw-obj-y = usb/ ide/
-hw-obj-y += loader.o
+hw-obj-y += loader.o dma.o
 hw-obj-$(CONFIG_VIRTIO) += virtio-console.o
 hw-obj-$(CONFIG_VIRTIO_PCI) += virtio-pci.o
 hw-obj-y += fw_cfg.o
@@ -28,7 +28,7 @@ hw-obj-$(CONFIG_PCKBD) += pckbd.o
 hw-obj-$(CONFIG_FDC) += fdc.o
 hw-obj-$(CONFIG_ACPI) += acpi.o acpi_piix4.o
 hw-obj-$(CONFIG_APM) += pm_smbus.o apm.o
-hw-obj-$(CONFIG_DMA) += dma.o
+hw-obj-$(CONFIG_DMA) += i8257.o
 hw-obj-$(CONFIG_I82374) += i82374.o
 hw-obj-$(CONFIG_HPET) += hpet.o
 hw-obj-$(CONFIG_APPLESMC) += applesmc.o

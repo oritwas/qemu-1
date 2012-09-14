@@ -1,565 +1,435 @@
 /*
- * QEMU DMA emulation
+ * DMA helper functions
  *
- * Copyright (c) 2003-2004 Vassili Karpov (malc)
+ * Copyright (c) 2009 Red Hat
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * This work is licensed under the terms of the GNU General Public License
+ * (GNU GPL), version 2 or later.
  */
-#include "hw.h"
-#include "isa.h"
 
-/* #define DEBUG_DMA */
+#include "dma.h"
+#include "trace.h"
+#include "range.h"
+#include "qemu-thread.h"
 
-#define dolog(...) fprintf (stderr, "dma: " __VA_ARGS__)
-#ifdef DEBUG_DMA
-#define linfo(...) fprintf (stderr, "dma: " __VA_ARGS__)
-#define ldebug(...) fprintf (stderr, "dma: " __VA_ARGS__)
-#else
-#define linfo(...)
-#define ldebug(...)
-#endif
+/* #define DEBUG_IOMMU */
 
-struct dma_regs {
-    int now[2];
-    uint16_t base[2];
-    uint8_t mode;
-    uint8_t page;
-    uint8_t pageh;
-    uint8_t dack;
-    uint8_t eop;
-    DMA_transfer_handler transfer_handler;
-    void *opaque;
-};
-
-#define ADDR 0
-#define COUNT 1
-
-static struct dma_cont {
-    uint8_t status;
-    uint8_t command;
-    uint8_t mask;
-    uint8_t flip_flop;
-    int dshift;
-    struct dma_regs regs[4];
-    qemu_irq *cpu_request_exit;
-} dma_controllers[2];
-
-enum {
-    CMD_MEMORY_TO_MEMORY = 0x01,
-    CMD_FIXED_ADDRESS    = 0x02,
-    CMD_BLOCK_CONTROLLER = 0x04,
-    CMD_COMPRESSED_TIME  = 0x08,
-    CMD_CYCLIC_PRIORITY  = 0x10,
-    CMD_EXTENDED_WRITE   = 0x20,
-    CMD_LOW_DREQ         = 0x40,
-    CMD_LOW_DACK         = 0x80,
-    CMD_NOT_SUPPORTED    = CMD_MEMORY_TO_MEMORY | CMD_FIXED_ADDRESS
-    | CMD_COMPRESSED_TIME | CMD_CYCLIC_PRIORITY | CMD_EXTENDED_WRITE
-    | CMD_LOW_DREQ | CMD_LOW_DACK
-
-};
-
-static void DMA_run (void);
-
-static int channels[8] = {-1, 2, 3, 1, -1, -1, -1, 0};
-
-static void write_page (void *opaque, uint32_t nport, uint32_t data)
+static void do_dma_memory_set(dma_addr_t addr, uint8_t c, dma_addr_t len)
 {
-    struct dma_cont *d = opaque;
-    int ichan;
+#define FILLBUF_SIZE 512
+    uint8_t fillbuf[FILLBUF_SIZE];
+    int l;
 
-    ichan = channels[nport & 7];
-    if (-1 == ichan) {
-        dolog ("invalid channel %#x %#x\n", nport, data);
-        return;
-    }
-    d->regs[ichan].page = data;
-}
-
-static void write_pageh (void *opaque, uint32_t nport, uint32_t data)
-{
-    struct dma_cont *d = opaque;
-    int ichan;
-
-    ichan = channels[nport & 7];
-    if (-1 == ichan) {
-        dolog ("invalid channel %#x %#x\n", nport, data);
-        return;
-    }
-    d->regs[ichan].pageh = data;
-}
-
-static uint32_t read_page (void *opaque, uint32_t nport)
-{
-    struct dma_cont *d = opaque;
-    int ichan;
-
-    ichan = channels[nport & 7];
-    if (-1 == ichan) {
-        dolog ("invalid channel read %#x\n", nport);
-        return 0;
-    }
-    return d->regs[ichan].page;
-}
-
-static uint32_t read_pageh (void *opaque, uint32_t nport)
-{
-    struct dma_cont *d = opaque;
-    int ichan;
-
-    ichan = channels[nport & 7];
-    if (-1 == ichan) {
-        dolog ("invalid channel read %#x\n", nport);
-        return 0;
-    }
-    return d->regs[ichan].pageh;
-}
-
-static inline void init_chan (struct dma_cont *d, int ichan)
-{
-    struct dma_regs *r;
-
-    r = d->regs + ichan;
-    r->now[ADDR] = r->base[ADDR] << d->dshift;
-    r->now[COUNT] = 0;
-}
-
-static inline int getff (struct dma_cont *d)
-{
-    int ff;
-
-    ff = d->flip_flop;
-    d->flip_flop = !ff;
-    return ff;
-}
-
-static uint32_t read_chan (void *opaque, uint32_t nport)
-{
-    struct dma_cont *d = opaque;
-    int ichan, nreg, iport, ff, val, dir;
-    struct dma_regs *r;
-
-    iport = (nport >> d->dshift) & 0x0f;
-    ichan = iport >> 1;
-    nreg = iport & 1;
-    r = d->regs + ichan;
-
-    dir = ((r->mode >> 5) & 1) ? -1 : 1;
-    ff = getff (d);
-    if (nreg)
-        val = (r->base[COUNT] << d->dshift) - r->now[COUNT];
-    else
-        val = r->now[ADDR] + r->now[COUNT] * dir;
-
-    ldebug ("read_chan %#x -> %d\n", iport, val);
-    return (val >> (d->dshift + (ff << 3))) & 0xff;
-}
-
-static void write_chan (void *opaque, uint32_t nport, uint32_t data)
-{
-    struct dma_cont *d = opaque;
-    int iport, ichan, nreg;
-    struct dma_regs *r;
-
-    iport = (nport >> d->dshift) & 0x0f;
-    ichan = iport >> 1;
-    nreg = iport & 1;
-    r = d->regs + ichan;
-    if (getff (d)) {
-        r->base[nreg] = (r->base[nreg] & 0xff) | ((data << 8) & 0xff00);
-        init_chan (d, ichan);
-    } else {
-        r->base[nreg] = (r->base[nreg] & 0xff00) | (data & 0xff);
+    memset(fillbuf, c, FILLBUF_SIZE);
+    while (len > 0) {
+        l = len < FILLBUF_SIZE ? len : FILLBUF_SIZE;
+        cpu_physical_memory_rw(addr, fillbuf, l, true);
+        len -= l;
+        addr += l;
     }
 }
 
-static void write_cont (void *opaque, uint32_t nport, uint32_t data)
+int dma_memory_set(DMAContext *dma, dma_addr_t addr, uint8_t c, dma_addr_t len)
 {
-    struct dma_cont *d = opaque;
-    int iport, ichan = 0;
+    dma_barrier(dma, DMA_DIRECTION_FROM_DEVICE);
 
-    iport = (nport >> d->dshift) & 0x0f;
-    switch (iport) {
-    case 0x08:                  /* command */
-        if ((data != 0) && (data & CMD_NOT_SUPPORTED)) {
-            dolog ("command %#x not supported\n", data);
-            return;
-        }
-        d->command = data;
-        break;
-
-    case 0x09:
-        ichan = data & 3;
-        if (data & 4) {
-            d->status |= 1 << (ichan + 4);
-        }
-        else {
-            d->status &= ~(1 << (ichan + 4));
-        }
-        d->status &= ~(1 << ichan);
-        DMA_run();
-        break;
-
-    case 0x0a:                  /* single mask */
-        if (data & 4)
-            d->mask |= 1 << (data & 3);
-        else
-            d->mask &= ~(1 << (data & 3));
-        DMA_run();
-        break;
-
-    case 0x0b:                  /* mode */
-        {
-            ichan = data & 3;
-#ifdef DEBUG_DMA
-            {
-                int op, ai, dir, opmode;
-                op = (data >> 2) & 3;
-                ai = (data >> 4) & 1;
-                dir = (data >> 5) & 1;
-                opmode = (data >> 6) & 3;
-
-                linfo ("ichan %d, op %d, ai %d, dir %d, opmode %d\n",
-                       ichan, op, ai, dir, opmode);
-            }
-#endif
-            d->regs[ichan].mode = data;
-            break;
-        }
-
-    case 0x0c:                  /* clear flip flop */
-        d->flip_flop = 0;
-        break;
-
-    case 0x0d:                  /* reset */
-        d->flip_flop = 0;
-        d->mask = ~0;
-        d->status = 0;
-        d->command = 0;
-        break;
-
-    case 0x0e:                  /* clear mask for all channels */
-        d->mask = 0;
-        DMA_run();
-        break;
-
-    case 0x0f:                  /* write mask for all channels */
-        d->mask = data;
-        DMA_run();
-        break;
-
-    default:
-        dolog ("unknown iport %#x\n", iport);
-        break;
+    if (dma_has_iommu(dma)) {
+        return iommu_dma_memory_set(dma, addr, c, len);
     }
-
-#ifdef DEBUG_DMA
-    if (0xc != iport) {
-        linfo ("write_cont: nport %#06x, ichan % 2d, val %#06x\n",
-               nport, ichan, data);
-    }
-#endif
-}
-
-static uint32_t read_cont (void *opaque, uint32_t nport)
-{
-    struct dma_cont *d = opaque;
-    int iport, val;
-
-    iport = (nport >> d->dshift) & 0x0f;
-    switch (iport) {
-    case 0x08:                  /* status */
-        val = d->status;
-        d->status &= 0xf0;
-        break;
-    case 0x0f:                  /* mask */
-        val = d->mask;
-        break;
-    default:
-        val = 0;
-        break;
-    }
-
-    ldebug ("read_cont: nport %#06x, iport %#04x val %#x\n", nport, iport, val);
-    return val;
-}
-
-int DMA_get_channel_mode (int nchan)
-{
-    return dma_controllers[nchan > 3].regs[nchan & 3].mode;
-}
-
-void DMA_hold_DREQ (int nchan)
-{
-    int ncont, ichan;
-
-    ncont = nchan > 3;
-    ichan = nchan & 3;
-    linfo ("held cont=%d chan=%d\n", ncont, ichan);
-    dma_controllers[ncont].status |= 1 << (ichan + 4);
-    DMA_run();
-}
-
-void DMA_release_DREQ (int nchan)
-{
-    int ncont, ichan;
-
-    ncont = nchan > 3;
-    ichan = nchan & 3;
-    linfo ("released cont=%d chan=%d\n", ncont, ichan);
-    dma_controllers[ncont].status &= ~(1 << (ichan + 4));
-    DMA_run();
-}
-
-static void channel_run (int ncont, int ichan)
-{
-    int n;
-    struct dma_regs *r = &dma_controllers[ncont].regs[ichan];
-#ifdef DEBUG_DMA
-    int dir, opmode;
-
-    dir = (r->mode >> 5) & 1;
-    opmode = (r->mode >> 6) & 3;
-
-    if (dir) {
-        dolog ("DMA in address decrement mode\n");
-    }
-    if (opmode != 1) {
-        dolog ("DMA not in single mode select %#x\n", opmode);
-    }
-#endif
-
-    n = r->transfer_handler (r->opaque, ichan + (ncont << 2),
-                             r->now[COUNT], (r->base[COUNT] + 1) << ncont);
-    r->now[COUNT] = n;
-    ldebug ("dma_pos %d size %d\n", n, (r->base[COUNT] + 1) << ncont);
-}
-
-static QEMUBH *dma_bh;
-
-static void DMA_run (void)
-{
-    struct dma_cont *d;
-    int icont, ichan;
-    int rearm = 0;
-    static int running = 0;
-
-    if (running) {
-        rearm = 1;
-        goto out;
-    } else {
-        running = 1;
-    }
-
-    d = dma_controllers;
-
-    for (icont = 0; icont < 2; icont++, d++) {
-        for (ichan = 0; ichan < 4; ichan++) {
-            int mask;
-
-            mask = 1 << ichan;
-
-            if ((0 == (d->mask & mask)) && (0 != (d->status & (mask << 4)))) {
-                channel_run (icont, ichan);
-                rearm = 1;
-            }
-        }
-    }
-
-    running = 0;
-out:
-    if (rearm)
-        qemu_bh_schedule_idle(dma_bh);
-}
-
-static void DMA_run_bh(void *unused)
-{
-    DMA_run();
-}
-
-void DMA_register_channel (int nchan,
-                           DMA_transfer_handler transfer_handler,
-                           void *opaque)
-{
-    struct dma_regs *r;
-    int ichan, ncont;
-
-    ncont = nchan > 3;
-    ichan = nchan & 3;
-
-    r = dma_controllers[ncont].regs + ichan;
-    r->transfer_handler = transfer_handler;
-    r->opaque = opaque;
-}
-
-int DMA_read_memory (int nchan, void *buf, int pos, int len)
-{
-    struct dma_regs *r = &dma_controllers[nchan > 3].regs[nchan & 3];
-    target_phys_addr_t addr = ((r->pageh & 0x7f) << 24) | (r->page << 16) | r->now[ADDR];
-
-    if (r->mode & 0x20) {
-        int i;
-        uint8_t *p = buf;
-
-        cpu_physical_memory_read (addr - pos - len, buf, len);
-        /* What about 16bit transfers? */
-        for (i = 0; i < len >> 1; i++) {
-            uint8_t b = p[len - i - 1];
-            p[i] = b;
-        }
-    }
-    else
-        cpu_physical_memory_read (addr + pos, buf, len);
-
-    return len;
-}
-
-int DMA_write_memory (int nchan, void *buf, int pos, int len)
-{
-    struct dma_regs *r = &dma_controllers[nchan > 3].regs[nchan & 3];
-    target_phys_addr_t addr = ((r->pageh & 0x7f) << 24) | (r->page << 16) | r->now[ADDR];
-
-    if (r->mode & 0x20) {
-        int i;
-        uint8_t *p = buf;
-
-        cpu_physical_memory_write (addr - pos - len, buf, len);
-        /* What about 16bit transfers? */
-        for (i = 0; i < len; i++) {
-            uint8_t b = p[len - i - 1];
-            p[i] = b;
-        }
-    }
-    else
-        cpu_physical_memory_write (addr + pos, buf, len);
-
-    return len;
-}
-
-/* request the emulator to transfer a new DMA memory block ASAP */
-void DMA_schedule(int nchan)
-{
-    struct dma_cont *d = &dma_controllers[nchan > 3];
-
-    qemu_irq_pulse(*d->cpu_request_exit);
-}
-
-static void dma_reset(void *opaque)
-{
-    struct dma_cont *d = opaque;
-    write_cont (d, (0x0d << d->dshift), 0);
-}
-
-static int dma_phony_handler (void *opaque, int nchan, int dma_pos, int dma_len)
-{
-    dolog ("unregistered DMA channel used nchan=%d dma_pos=%d dma_len=%d\n",
-           nchan, dma_pos, dma_len);
-    return dma_pos;
-}
-
-/* dshift = 0: 8 bit DMA, 1 = 16 bit DMA */
-static void dma_init2(struct dma_cont *d, int base, int dshift,
-                      int page_base, int pageh_base,
-                      qemu_irq *cpu_request_exit)
-{
-    static const int page_port_list[] = { 0x1, 0x2, 0x3, 0x7 };
-    int i;
-
-    d->dshift = dshift;
-    d->cpu_request_exit = cpu_request_exit;
-    for (i = 0; i < 8; i++) {
-        register_ioport_write (base + (i << dshift), 1, 1, write_chan, d);
-        register_ioport_read (base + (i << dshift), 1, 1, read_chan, d);
-    }
-    for (i = 0; i < ARRAY_SIZE (page_port_list); i++) {
-        register_ioport_write (page_base + page_port_list[i], 1, 1,
-                               write_page, d);
-        register_ioport_read (page_base + page_port_list[i], 1, 1,
-                              read_page, d);
-        if (pageh_base >= 0) {
-            register_ioport_write (pageh_base + page_port_list[i], 1, 1,
-                                   write_pageh, d);
-            register_ioport_read (pageh_base + page_port_list[i], 1, 1,
-                                  read_pageh, d);
-        }
-    }
-    for (i = 0; i < 8; i++) {
-        register_ioport_write (base + ((i + 8) << dshift), 1, 1,
-                               write_cont, d);
-        register_ioport_read (base + ((i + 8) << dshift), 1, 1,
-                              read_cont, d);
-    }
-    qemu_register_reset(dma_reset, d);
-    dma_reset(d);
-    for (i = 0; i < ARRAY_SIZE (d->regs); ++i) {
-        d->regs[i].transfer_handler = dma_phony_handler;
-    }
-}
-
-static const VMStateDescription vmstate_dma_regs = {
-    .name = "dma_regs",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField []) {
-        VMSTATE_INT32_ARRAY(now, struct dma_regs, 2),
-        VMSTATE_UINT16_ARRAY(base, struct dma_regs, 2),
-        VMSTATE_UINT8(mode, struct dma_regs),
-        VMSTATE_UINT8(page, struct dma_regs),
-        VMSTATE_UINT8(pageh, struct dma_regs),
-        VMSTATE_UINT8(dack, struct dma_regs),
-        VMSTATE_UINT8(eop, struct dma_regs),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-static int dma_post_load(void *opaque, int version_id)
-{
-    DMA_run();
+    do_dma_memory_set(addr, c, len);
 
     return 0;
 }
 
-static const VMStateDescription vmstate_dma = {
-    .name = "dma",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .post_load = dma_post_load,
-    .fields      = (VMStateField []) {
-        VMSTATE_UINT8(command, struct dma_cont),
-        VMSTATE_UINT8(mask, struct dma_cont),
-        VMSTATE_UINT8(flip_flop, struct dma_cont),
-        VMSTATE_INT32(dshift, struct dma_cont),
-        VMSTATE_STRUCT_ARRAY(regs, struct dma_cont, 4, 1, vmstate_dma_regs, struct dma_regs),
-        VMSTATE_END_OF_LIST()
+void qemu_sglist_init(QEMUSGList *qsg, int alloc_hint, DMAContext *dma)
+{
+    qsg->sg = g_malloc(alloc_hint * sizeof(ScatterGatherEntry));
+    qsg->nsg = 0;
+    qsg->nalloc = alloc_hint;
+    qsg->size = 0;
+    qsg->dma = dma;
+}
+
+void qemu_sglist_add(QEMUSGList *qsg, dma_addr_t base, dma_addr_t len)
+{
+    if (qsg->nsg == qsg->nalloc) {
+        qsg->nalloc = 2 * qsg->nalloc + 1;
+        qsg->sg = g_realloc(qsg->sg, qsg->nalloc * sizeof(ScatterGatherEntry));
     }
+    qsg->sg[qsg->nsg].base = base;
+    qsg->sg[qsg->nsg].len = len;
+    qsg->size += len;
+    ++qsg->nsg;
+}
+
+void qemu_sglist_destroy(QEMUSGList *qsg)
+{
+    g_free(qsg->sg);
+    memset(qsg, 0, sizeof(*qsg));
+}
+
+typedef struct {
+    BlockDriverAIOCB common;
+    BlockDriverState *bs;
+    BlockDriverAIOCB *acb;
+    QEMUSGList *sg;
+    uint64_t sector_num;
+    DMADirection dir;
+    bool in_cancel;
+    int sg_cur_index;
+    dma_addr_t sg_cur_byte;
+    QEMUIOVector iov;
+    QEMUBH *bh;
+    DMAIOFunc *io_func;
+} DMAAIOCB;
+
+static void dma_bdrv_cb(void *opaque, int ret);
+
+static void reschedule_dma(void *opaque)
+{
+    DMAAIOCB *dbs = (DMAAIOCB *)opaque;
+
+    qemu_bh_delete(dbs->bh);
+    dbs->bh = NULL;
+    dma_bdrv_cb(dbs, 0);
+}
+
+static void continue_after_map_failure(void *opaque)
+{
+    DMAAIOCB *dbs = (DMAAIOCB *)opaque;
+
+    dbs->bh = qemu_bh_new(reschedule_dma, dbs);
+    qemu_bh_schedule(dbs->bh);
+}
+
+static void dma_bdrv_unmap(DMAAIOCB *dbs)
+{
+    int i;
+
+    for (i = 0; i < dbs->iov.niov; ++i) {
+        dma_memory_unmap(dbs->sg->dma, dbs->iov.iov[i].iov_base,
+                         dbs->iov.iov[i].iov_len, dbs->dir,
+                         dbs->iov.iov[i].iov_len);
+    }
+    qemu_iovec_reset(&dbs->iov);
+}
+
+static void dma_complete(DMAAIOCB *dbs, int ret)
+{
+    trace_dma_complete(dbs, ret, dbs->common.cb);
+
+    dma_bdrv_unmap(dbs);
+    if (dbs->common.cb) {
+        dbs->common.cb(dbs->common.opaque, ret);
+    }
+    qemu_iovec_destroy(&dbs->iov);
+    if (dbs->bh) {
+        qemu_bh_delete(dbs->bh);
+        dbs->bh = NULL;
+    }
+    if (!dbs->in_cancel) {
+        /* Requests may complete while dma_aio_cancel is in progress.  In
+         * this case, the AIOCB should not be released because it is still
+         * referenced by dma_aio_cancel.  */
+        qemu_aio_release(dbs);
+    }
+}
+
+static void dma_bdrv_cb(void *opaque, int ret)
+{
+    DMAAIOCB *dbs = (DMAAIOCB *)opaque;
+    dma_addr_t cur_addr, cur_len;
+    void *mem;
+
+    trace_dma_bdrv_cb(dbs, ret);
+
+    dbs->acb = NULL;
+    dbs->sector_num += dbs->iov.size / 512;
+    dma_bdrv_unmap(dbs);
+
+    if (dbs->sg_cur_index == dbs->sg->nsg || ret < 0) {
+        dma_complete(dbs, ret);
+        return;
+    }
+
+    while (dbs->sg_cur_index < dbs->sg->nsg) {
+        cur_addr = dbs->sg->sg[dbs->sg_cur_index].base + dbs->sg_cur_byte;
+        cur_len = dbs->sg->sg[dbs->sg_cur_index].len - dbs->sg_cur_byte;
+        mem = dma_memory_map(dbs->sg->dma, cur_addr, &cur_len, dbs->dir);
+        if (!mem)
+            break;
+        qemu_iovec_add(&dbs->iov, mem, cur_len);
+        dbs->sg_cur_byte += cur_len;
+        if (dbs->sg_cur_byte == dbs->sg->sg[dbs->sg_cur_index].len) {
+            dbs->sg_cur_byte = 0;
+            ++dbs->sg_cur_index;
+        }
+    }
+
+    if (dbs->iov.size == 0) {
+        trace_dma_map_wait(dbs);
+        cpu_register_map_client(dbs, continue_after_map_failure);
+        return;
+    }
+
+    dbs->acb = dbs->io_func(dbs->bs, dbs->sector_num, &dbs->iov,
+                            dbs->iov.size / 512, dma_bdrv_cb, dbs);
+    assert(dbs->acb);
+}
+
+static void dma_aio_cancel(BlockDriverAIOCB *acb)
+{
+    DMAAIOCB *dbs = container_of(acb, DMAAIOCB, common);
+
+    trace_dma_aio_cancel(dbs);
+
+    if (dbs->acb) {
+        BlockDriverAIOCB *acb = dbs->acb;
+        dbs->acb = NULL;
+        dbs->in_cancel = true;
+        bdrv_aio_cancel(acb);
+        dbs->in_cancel = false;
+    }
+    dbs->common.cb = NULL;
+    dma_complete(dbs, 0);
+}
+
+static AIOPool dma_aio_pool = {
+    .aiocb_size         = sizeof(DMAAIOCB),
+    .cancel             = dma_aio_cancel,
 };
 
-void DMA_init(int high_page_enable, qemu_irq *cpu_request_exit)
+BlockDriverAIOCB *dma_bdrv_io(
+    BlockDriverState *bs, QEMUSGList *sg, uint64_t sector_num,
+    DMAIOFunc *io_func, BlockDriverCompletionFunc *cb,
+    void *opaque, DMADirection dir)
 {
-    dma_init2(&dma_controllers[0], 0x00, 0, 0x80,
-              high_page_enable ? 0x480 : -1, cpu_request_exit);
-    dma_init2(&dma_controllers[1], 0xc0, 1, 0x88,
-              high_page_enable ? 0x488 : -1, cpu_request_exit);
-    vmstate_register (NULL, 0, &vmstate_dma, &dma_controllers[0]);
-    vmstate_register (NULL, 1, &vmstate_dma, &dma_controllers[1]);
+    DMAAIOCB *dbs = qemu_aio_get(&dma_aio_pool, bs, cb, opaque);
 
-    dma_bh = qemu_bh_new(DMA_run_bh, NULL);
+    trace_dma_bdrv_io(dbs, bs, sector_num, (dir == DMA_DIRECTION_TO_DEVICE));
+
+    dbs->acb = NULL;
+    dbs->bs = bs;
+    dbs->sg = sg;
+    dbs->sector_num = sector_num;
+    dbs->sg_cur_index = 0;
+    dbs->sg_cur_byte = 0;
+    dbs->dir = dir;
+    dbs->io_func = io_func;
+    dbs->bh = NULL;
+    qemu_iovec_init(&dbs->iov, sg->nsg);
+    dma_bdrv_cb(dbs, 0);
+    return &dbs->common;
+}
+
+
+BlockDriverAIOCB *dma_bdrv_read(BlockDriverState *bs,
+                                QEMUSGList *sg, uint64_t sector,
+                                void (*cb)(void *opaque, int ret), void *opaque)
+{
+    return dma_bdrv_io(bs, sg, sector, bdrv_aio_readv, cb, opaque,
+                       DMA_DIRECTION_FROM_DEVICE);
+}
+
+BlockDriverAIOCB *dma_bdrv_write(BlockDriverState *bs,
+                                 QEMUSGList *sg, uint64_t sector,
+                                 void (*cb)(void *opaque, int ret), void *opaque)
+{
+    return dma_bdrv_io(bs, sg, sector, bdrv_aio_writev, cb, opaque,
+                       DMA_DIRECTION_TO_DEVICE);
+}
+
+
+static uint64_t dma_buf_rw(uint8_t *ptr, int32_t len, QEMUSGList *sg,
+                           DMADirection dir)
+{
+    uint64_t resid;
+    int sg_cur_index;
+
+    resid = sg->size;
+    sg_cur_index = 0;
+    len = MIN(len, resid);
+    while (len > 0) {
+        ScatterGatherEntry entry = sg->sg[sg_cur_index++];
+        int32_t xfer = MIN(len, entry.len);
+        dma_memory_rw(sg->dma, entry.base, ptr, xfer, dir);
+        ptr += xfer;
+        len -= xfer;
+        resid -= xfer;
+    }
+
+    return resid;
+}
+
+uint64_t dma_buf_read(uint8_t *ptr, int32_t len, QEMUSGList *sg)
+{
+    return dma_buf_rw(ptr, len, sg, DMA_DIRECTION_FROM_DEVICE);
+}
+
+uint64_t dma_buf_write(uint8_t *ptr, int32_t len, QEMUSGList *sg)
+{
+    return dma_buf_rw(ptr, len, sg, DMA_DIRECTION_TO_DEVICE);
+}
+
+void dma_acct_start(BlockDriverState *bs, BlockAcctCookie *cookie,
+                    QEMUSGList *sg, enum BlockAcctType type)
+{
+    bdrv_acct_start(bs, cookie, sg->size, type);
+}
+
+bool iommu_dma_memory_valid(DMAContext *dma, dma_addr_t addr, dma_addr_t len,
+                            DMADirection dir)
+{
+    target_phys_addr_t paddr, plen;
+
+#ifdef DEBUG_IOMMU
+    fprintf(stderr, "dma_memory_check context=%p addr=0x" DMA_ADDR_FMT
+            " len=0x" DMA_ADDR_FMT " dir=%d\n", dma, addr, len, dir);
+#endif
+
+    while (len) {
+        if (dma->translate(dma, addr, &paddr, &plen, dir) != 0) {
+            return false;
+        }
+
+        /* The translation might be valid for larger regions. */
+        if (plen > len) {
+            plen = len;
+        }
+
+        len -= plen;
+        addr += plen;
+    }
+
+    return true;
+}
+
+int iommu_dma_memory_rw(DMAContext *dma, dma_addr_t addr,
+                        void *buf, dma_addr_t len, DMADirection dir)
+{
+    target_phys_addr_t paddr, plen;
+    int err;
+
+#ifdef DEBUG_IOMMU
+    fprintf(stderr, "dma_memory_rw context=%p addr=0x" DMA_ADDR_FMT " len=0x"
+            DMA_ADDR_FMT " dir=%d\n", dma, addr, len, dir);
+#endif
+
+    while (len) {
+        err = dma->translate(dma, addr, &paddr, &plen, dir);
+        if (err) {
+	    /*
+             * In case of failure on reads from the guest, we clean the
+             * destination buffer so that a device that doesn't test
+             * for errors will not expose qemu internal memory.
+	     */
+	    memset(buf, 0, len);
+            return -1;
+        }
+
+        /* The translation might be valid for larger regions. */
+        if (plen > len) {
+            plen = len;
+        }
+
+        cpu_physical_memory_rw(paddr, buf, plen,
+                               dir == DMA_DIRECTION_FROM_DEVICE);
+
+        len -= plen;
+        addr += plen;
+        buf += plen;
+    }
+
+    return 0;
+}
+
+int iommu_dma_memory_set(DMAContext *dma, dma_addr_t addr, uint8_t c,
+                         dma_addr_t len)
+{
+    target_phys_addr_t paddr, plen;
+    int err;
+
+#ifdef DEBUG_IOMMU
+    fprintf(stderr, "dma_memory_set context=%p addr=0x" DMA_ADDR_FMT
+            " len=0x" DMA_ADDR_FMT "\n", dma, addr, len);
+#endif
+
+    while (len) {
+        err = dma->translate(dma, addr, &paddr, &plen,
+                             DMA_DIRECTION_FROM_DEVICE);
+        if (err) {
+            return err;
+        }
+
+        /* The translation might be valid for larger regions. */
+        if (plen > len) {
+            plen = len;
+        }
+
+        do_dma_memory_set(paddr, c, plen);
+
+        len -= plen;
+        addr += plen;
+    }
+
+    return 0;
+}
+
+void dma_context_init(DMAContext *dma, DMATranslateFunc translate,
+                      DMAMapFunc map, DMAUnmapFunc unmap)
+{
+#ifdef DEBUG_IOMMU
+    fprintf(stderr, "dma_context_init(%p, %p, %p, %p)\n",
+            dma, translate, map, unmap);
+#endif
+    dma->translate = translate;
+    dma->map = map;
+    dma->unmap = unmap;
+}
+
+void *iommu_dma_memory_map(DMAContext *dma, dma_addr_t addr, dma_addr_t *len,
+                           DMADirection dir)
+{
+    int err;
+    target_phys_addr_t paddr, plen;
+    void *buf;
+
+    if (dma->map) {
+        return dma->map(dma, addr, len, dir);
+    }
+
+    plen = *len;
+    err = dma->translate(dma, addr, &paddr, &plen, dir);
+    if (err) {
+        return NULL;
+    }
+
+    /*
+     * If this is true, the virtual region is contiguous,
+     * but the translated physical region isn't. We just
+     * clamp *len, much like cpu_physical_memory_map() does.
+     */
+    if (plen < *len) {
+        *len = plen;
+    }
+
+    buf = cpu_physical_memory_map(paddr, &plen,
+                                  dir == DMA_DIRECTION_FROM_DEVICE);
+    *len = plen;
+
+    return buf;
+}
+
+void iommu_dma_memory_unmap(DMAContext *dma, void *buffer, dma_addr_t len,
+                            DMADirection dir, dma_addr_t access_len)
+{
+    if (dma->unmap) {
+        dma->unmap(dma, buffer, len, dir, access_len);
+        return;
+    }
+
+    cpu_physical_memory_unmap(buffer, len,
+                              dir == DMA_DIRECTION_FROM_DEVICE,
+                              access_len);
+
 }
