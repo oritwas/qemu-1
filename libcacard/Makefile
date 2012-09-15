@@ -10,7 +10,7 @@ $(call set-vpath, $(SRC_PATH))
 QEMU_OBJS=$(oslib-obj-y) qemu-timer-common.o $(trace-obj-y)
 QEMU_OBJS_LIB=$(patsubst %.o,%.lo,$(QEMU_OBJS))
 
-QEMU_CFLAGS+=-I../
+QEMU_CFLAGS+=-I../ -I$(SRC_PATH)/include
 
 libcacard.lib-y=$(patsubst %.o,%.lo,$(libcacard-y))
 
