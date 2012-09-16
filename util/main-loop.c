@@ -24,7 +24,7 @@
 
 #include "qemu-common.h"
 #include "qemu-timer.h"
-#include "slirp/slirp.h"
+#include "slirp/libslirp.h"
 #include "main-loop.h"
 
 #ifndef _WIN32

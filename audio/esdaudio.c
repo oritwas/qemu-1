@@ -23,7 +23,7 @@
  */
 #include <esd.h>
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "esd"
 #include "audio_int.h"

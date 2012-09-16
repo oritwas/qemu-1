@@ -1,6 +1,6 @@
 #include "hw/hw.h"
 #include "monitor.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 typedef struct {
     FILE *f;

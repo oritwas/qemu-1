@@ -16,7 +16,7 @@
  */
 
 #include "qemu-common.h"
-#include "qemu-spice.h"
+#include "ui/qemu-spice.h"
 #include "qemu-timer.h"
 #include "qemu-queue.h"
 #include "monitor.h"
@@ -24,7 +24,7 @@
 #include "sysemu.h"
 #include "trace.h"
 
-#include "spice-display.h"
+#include "ui/spice-display.h"
 
 static int debug = 0;
 

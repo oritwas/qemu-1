@@ -1,6 +1,6 @@
 /* public domain */
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #include <pulse/pulseaudio.h>
 

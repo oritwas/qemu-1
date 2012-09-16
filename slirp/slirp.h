@@ -66,11 +66,6 @@ typedef char *caddr_t;
 #include <sys/uio.h>
 #endif
 
-#ifndef _WIN32
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#endif
-
 /* Systems lacking strdup() definition in <string.h>. */
 #if defined(ultrix)
 char *strdup(const char *);
@@ -136,7 +131,7 @@ void free(void *ptr);
 #include "qemu-queue.h"
 #include "qemu_socket.h"
 
-#include "libslirp.h"
+#include "slirp/libslirp.h"
 #include "ip.h"
 #include "tcp.h"
 #include "tcp_timer.h"

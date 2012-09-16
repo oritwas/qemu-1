@@ -24,7 +24,7 @@
 #include <fmod.h>
 #include <fmod_errors.h>
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "fmod"
 #include "audio_int.h"

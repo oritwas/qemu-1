@@ -24,7 +24,7 @@
 #include <alsa/asoundlib.h>
 #include "qemu-common.h"
 #include "qemu-char.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #if QEMU_GNUC_PREREQ(4, 3)
 #pragma GCC diagnostic ignored "-Waddress"

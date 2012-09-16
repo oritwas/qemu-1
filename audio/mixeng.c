@@ -23,7 +23,7 @@
  * THE SOFTWARE.
  */
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "mixeng"
 #include "audio_int.h"

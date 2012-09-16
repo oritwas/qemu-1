@@ -33,7 +33,7 @@
 #include "qemu-common.h"
 #include "host-utils.h"
 #include "qemu-char.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "oss"
 #include "audio_int.h"

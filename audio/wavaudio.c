@@ -23,7 +23,7 @@
  */
 #include "hw/hw.h"
 #include "qemu-timer.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "wav"
 #include "audio_int.h"

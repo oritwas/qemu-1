@@ -2,7 +2,7 @@
 
 #include "qemu-common.h"
 #include "sysemu.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "winwave"
 #include "audio_int.h"

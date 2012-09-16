@@ -1,13 +1,12 @@
 /* public domain */
 
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #define AUDIO_CAP "win-int"
 #include <windows.h>
 #include <mmsystem.h>
 
-#include "audio.h"
 #include "audio_int.h"
 #include "audio_win_int.h"
 

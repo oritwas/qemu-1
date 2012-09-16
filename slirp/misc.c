@@ -6,7 +6,6 @@
  */
 
 #include <slirp.h>
-#include <libslirp.h>
 
 #include "monitor.h"
 

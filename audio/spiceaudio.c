@@ -22,7 +22,7 @@
 #include "ui/qemu-spice.h"
 
 #define AUDIO_CAP "spice"
-#include "audio.h"
+#include "audio/audio.h"
 #include "audio_int.h"
 
 #define LINE_IN_SAMPLES 1024

@@ -3,6 +3,11 @@
 
 #include "qemu-common.h"
 
+#ifndef _WIN32
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+
 struct Slirp;
 typedef struct Slirp Slirp;
 

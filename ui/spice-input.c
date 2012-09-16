@@ -24,7 +24,7 @@
 #include <spice/enums.h>
 
 #include "qemu-common.h"
-#include "qemu-spice.h"
+#include "ui/qemu-spice.h"
 #include "console.h"
 
 /* keyboard bits */

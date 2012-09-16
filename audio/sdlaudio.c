@@ -24,7 +24,7 @@
 #include <SDL.h>
 #include <SDL_thread.h>
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 
 #ifndef _WIN32
 #ifdef __sun__

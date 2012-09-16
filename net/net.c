@@ -26,7 +26,7 @@
 #include "net.h"
 #include "clients.h"
 #include "hub.h"
-#include "slirp.h"
+#include "net/slirp.h"
 #include "util.h"
 
 #include "monitor.h"

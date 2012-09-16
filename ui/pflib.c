@@ -11,7 +11,7 @@
  */
 #include "qemu-common.h"
 #include "console.h"
-#include "pflib.h"
+#include "ui/pflib.h"
 
 typedef struct QemuPixel QemuPixel;
 

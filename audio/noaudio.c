@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 #include "qemu-common.h"
-#include "audio.h"
+#include "audio/audio.h"
 #include "qemu-timer.h"
 
 #define AUDIO_CAP "noaudio"

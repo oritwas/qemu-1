@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 #include "hw/hw.h"
-#include "audio.h"
+#include "audio/audio.h"
 #include "monitor.h"
 #include "qemu-timer.h"
 #include "sysemu.h"
