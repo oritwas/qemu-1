@@ -1,0 +1,7 @@
+common-obj-y += audio/
+common-obj-y += ui/
+
+common-obj-$(CONFIG_LINUX) += fsdev/
+extra-obj-$(CONFIG_LINUX) += fsdev/
+
+common-obj-$(CONFIG_SLIRP) += slirp/

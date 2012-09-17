@@ -17,7 +17,7 @@
 #include "sysemu.h"
 #include "qmp-commands.h"
 #include "ui/qemu-spice.h"
-#include "ui/vnc.h"
+#include "console.h"
 #include "kvm.h"
 #include "arch_init.h"
 #include "hw/qdev.h"

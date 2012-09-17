@@ -44,9 +44,6 @@ common-obj-y += $(oslib-obj-y)
 common-obj-$(CONFIG_WIN32) += os-win32.o
 common-obj-$(CONFIG_POSIX) += os-posix.o
 
-common-obj-$(CONFIG_LINUX) += fsdev/
-extra-obj-$(CONFIG_LINUX) += fsdev/
-
 common-obj-y += buffered_file.o migration.o migration-tcp.o
 common-obj-y += qemu-char.o #aio.o
 common-obj-y += block-migration.o
@@ -57,13 +54,10 @@ common-obj-$(CONFIG_WIN32) += version.o
 
 common-obj-$(CONFIG_SPICE) += spice-qemu-char.o
 
-common-obj-y += audio/
+common-obj-y += sysemu/
 common-obj-y += exec/
 common-obj-y += hw/
-common-obj-y += ui/
 common-obj-y += bt-host.o bt-vhci.o
-
-common-obj-$(CONFIG_SLIRP) += slirp/
 
 ######################################################################
 # libseccomp

@@ -42,7 +42,7 @@ HELPERS-$(CONFIG_LINUX) = qemu-bridge-helper$(EXESUF)
 ifdef BUILD_DOCS
 DOCS=qemu-doc.html qemu-tech.html qemu.1 qemu-img.1 qemu-nbd.8 QMP/qmp-commands.txt
 ifdef CONFIG_VIRTFS
-DOCS+=fsdev/virtfs-proxy-helper.1
+DOCS+=sysemu/fsdev/virtfs-proxy-helper.1
 endif
 else
 DOCS=
@@ -164,8 +164,8 @@ qemu-bridge-helper$(EXESUF): tools/qemu-bridge-helper.o
 vscclient$(EXESUF): $(libcacard-y) $(oslib-obj-y) $(trace-obj-y) qapi/stub.o util/clock.o libcacard/vscclient.o
 	$(call quiet-command,$(CC) $(LDFLAGS) -o $@ $^ $(libcacard_libs) $(LIBS),"  LINK  $@")
 
-fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/virtio-9p-marshal.o $(oslib-obj-y) $(trace-obj-y)
-fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
+sysemu/fsdev/virtfs-proxy-helper$(EXESUF): sysemu/fsdev/virtfs-proxy-helper.o sysemu/fsdev/virtio-9p-marshal.o $(oslib-obj-y) $(trace-obj-y)
+sysemu/fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
 
 qemu-ga$(EXESUF): LIBS = $(LIBS_QGA)
 qemu-ga$(EXESUF): QEMU_CFLAGS += -I qga/qapi-generated
@@ -282,7 +282,7 @@ ifdef CONFIG_POSIX
 endif
 ifdef CONFIG_VIRTFS
 	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man1"
-	$(INSTALL_DATA) fsdev/virtfs-proxy-helper.1 "$(DESTDIR)$(mandir)/man1"
+	$(INSTALL_DATA) sysemu/fsdev/virtfs-proxy-helper.1 "$(DESTDIR)$(mandir)/man1"
 endif
 
 install-datadir:
@@ -370,10 +370,10 @@ qemu-img.1: qemu-img.texi qemu-img-cmds.texi
 	  $(POD2MAN) --section=1 --center=" " --release=" " qemu-img.pod > $@, \
 	  "  GEN   $@")
 
-fsdev/virtfs-proxy-helper.1: fsdev/virtfs-proxy-helper.texi
+sysemu/fsdev/virtfs-proxy-helper.1: sysemu/fsdev/virtfs-proxy-helper.texi
 	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< fsdev/virtfs-proxy-helper.pod && \
-	  $(POD2MAN) --section=1 --center=" " --release=" " fsdev/virtfs-proxy-helper.pod > $@, \
+	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< sysemu/fsdev/virtfs-proxy-helper.pod && \
+	  $(POD2MAN) --section=1 --center=" " --release=" " sysemu/fsdev/virtfs-proxy-helper.pod > $@, \
 	  "  GEN   $@")
 
 qemu-nbd.8: qemu-nbd.texi
