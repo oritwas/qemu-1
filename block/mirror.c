@@ -351,6 +351,18 @@ static void coroutine_fn mirror_run(void *opaque)
         }
     }
 
+    /*
+     * Ensure the set bits have reached the persistent dirty bitmap before
+     * moving on.  This covers the case where no I/O happens between the
+     * beginning of mirroring and block-job-complete, but there were indeed
+     * some dirty sectors.  In this case, the persistent dirty bitmap could end
+     * up staying all-zeroes all the time!
+     */
+    ret = bdrv_flush_dirty_tracking(bs, true);
+    if (ret < 0) {
+        goto immediate_exit;
+    }
+
     bdrv_dirty_iter_init(bs, &s->hbi);
     last_pause_ns = qemu_get_clock_ns(rt_clock);
     for (;;) {
@@ -392,6 +404,9 @@ static void coroutine_fn mirror_run(void *opaque)
                     break;
                 }
             } else {
+                ret = bdrv_flush_dirty_tracking(bs, false);
+                assert(ret >= 0);
+
                 /* We're out of the streaming phase.  From now on, if the job
                  * is cancelled we will actually complete all pending I/O and
                  * report completion.  This way, block-job-cancel will leave
