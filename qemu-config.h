@@ -2,6 +2,7 @@
 #define QEMU_CONFIG_H
 
 #include "error.h"
+#include "qemu-option.h"
 
 extern QemuOptsList qemu_fsdev_opts;
 extern QemuOptsList qemu_virtfs_opts;
