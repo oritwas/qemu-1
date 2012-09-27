@@ -139,19 +139,11 @@ version-obj-$(CONFIG_WIN32) += version.o
 # Support building shared library libcacard
 
 .PHONY: libcacard.la install-libcacard
-ifeq ($(LIBTOOL),)
-libcacard.la:
-	@echo "libtool is missing, please install and rerun configure"; exit 1
-
-install-libcacard:
-	@echo "libtool is missing, please install and rerun configure"; exit 1
-else
-libcacard.la: $(oslib-obj-y) qemu-timer-common.o $(addsuffix .lo, $(basename $(trace-obj-y)))
+libcacard.la: $(oslib-obj-y) qemu-timer-common.o $(trace-obj-y)
 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C libcacard V="$(V)" TARGET_DIR="$*/" libcacard.la,)
 
 install-libcacard: libcacard.la
 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C libcacard V="$(V)" TARGET_DIR="$*/" install-libcacard,)
-endif
 
 ######################################################################
 
