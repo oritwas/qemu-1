@@ -345,6 +345,7 @@ static const QEMUFileOps stdio_file_write_ops = {
 QEMUFile *qemu_fdopen(int fd, const char *mode)
 {
     QEMUFileStdio *s;
+    int save_errno;
 
     if (mode == NULL ||
 	(mode[0] != 'r' && mode[0] != 'w') ||
@@ -366,7 +367,9 @@ QEMUFile *qemu_fdopen(int fd, const char *mode)
     return s->file;
 
 fail:
+    save_errno = errno;
     g_free(s);
+    errno = save_errno;
     return NULL;
 }
 
@@ -388,6 +391,7 @@ QEMUFile *qemu_fopen_socket(int fd)
 QEMUFile *qemu_fopen(const char *filename, const char *mode)
 {
     QEMUFileStdio *s;
+    int save_errno;
 
     if (mode == NULL ||
 	(mode[0] != 'r' && mode[0] != 'w') ||
@@ -409,7 +413,9 @@ QEMUFile *qemu_fopen(const char *filename, const char *mode)
     }
     return s->file;
 fail:
+    save_errno = errno;
     g_free(s);
+    errno = save_errno;
     return NULL;
 }
 
