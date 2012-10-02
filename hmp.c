@@ -149,7 +149,8 @@ void hmp_info_migrate(Monitor *mon)
     }
 
     if (info->has_status) {
-        monitor_printf(mon, "Migration status: %s\n", info->status);
+        monitor_printf(mon, "Migration status: %s\n",
+                       MigrationStatus_lookup[info->status]);
         monitor_printf(mon, "total time: %" PRIu64 " milliseconds\n",
                        info->total_time);
         if (info->has_expected_downtime) {
@@ -1041,7 +1042,7 @@ static void hmp_migrate_status_cb(void *opaque)
     MigrationInfo *info;
 
     info = qmp_query_migrate(NULL);
-    if (!info->has_status || strcmp(info->status, "active") == 0) {
+    if (!info->has_status || info->status == MIGRATION_STATUS_ACTIVE) {
         if (info->has_disk) {
             int progress;
 

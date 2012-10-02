@@ -417,11 +417,21 @@
            'cache-miss': 'int', 'overflow': 'int' } }
 
 ##
+# @MigrationStatus
+#
+# Current state of the migration process.
+#
+# Since: 0.14.0
+##
+{ 'enum': 'MigrationStatus',
+  'data': ['active', 'completed', 'failed', 'cancelled'] }
+
+##
 # @MigrationInfo
 #
 # Information about current migration process.
 #
-# @status: #optional string describing the current migration status.
+# @status: #optional @MigrationStatus describing the current migration status.
 #          As of 0.14.0 this can be 'active', 'completed', 'failed' or
 #          'cancelled'. If this field is not returned, no migration process
 #          has been initiated
@@ -453,7 +463,7 @@
 # Since: 0.14.0
 ##
 { 'type': 'MigrationInfo',
-  'data': {'*status': 'str', '*ram': 'MigrationStats',
+  'data': {'*status': 'MigrationStatus', '*ram': 'MigrationStats',
            '*disk': 'MigrationStats',
            '*xbzrle-cache': 'XBZRLECacheStats',
            '*total-time': 'int',

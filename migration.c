@@ -185,7 +185,7 @@ MigrationInfo *qmp_query_migrate(Error **errp)
         break;
     case MIG_STATE_ACTIVE:
         info->has_status = true;
-        info->status = g_strdup("active");
+        info->status = MIGRATION_STATUS_ACTIVE;
         info->has_total_time = true;
         info->total_time = qemu_get_clock_ms(rt_clock)
             - s->total_time;
@@ -217,7 +217,7 @@ MigrationInfo *qmp_query_migrate(Error **errp)
         get_xbzrle_cache_stats(info);
 
         info->has_status = true;
-        info->status = g_strdup("completed");
+        info->status = MIGRATION_STATUS_COMPLETED;
         info->total_time = s->total_time;
         info->has_downtime = true;
         info->downtime = s->downtime;
@@ -233,11 +233,11 @@ MigrationInfo *qmp_query_migrate(Error **errp)
         break;
     case MIG_STATE_ERROR:
         info->has_status = true;
-        info->status = g_strdup("failed");
+        info->status = MIGRATION_STATUS_FAILED;
         break;
     case MIG_STATE_CANCELLED:
         info->has_status = true;
-        info->status = g_strdup("cancelled");
+        info->status = MIGRATION_STATUS_CANCELLED;
         break;
     }
 
