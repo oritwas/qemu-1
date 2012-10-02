@@ -791,7 +791,7 @@ void qmp_transaction(BlockdevActionList *dev_list, Error **errp)
                                   states->old_bs->drv->format_name,
                                   NULL, -1, flags);
             if (ret) {
-                error_set(errp, QERR_OPEN_FILE_FAILED, new_image_file);
+                error_set_errno(errp, -ret, QERR_OPEN_FILE_FAILED, new_image_file);
                 goto delete_and_fail;
             }
         }
@@ -801,7 +801,7 @@ void qmp_transaction(BlockdevActionList *dev_list, Error **errp)
         ret = bdrv_open(states->new_bs, new_image_file,
                         flags | BDRV_O_NO_BACKING, drv);
         if (ret != 0) {
-            error_set(errp, QERR_OPEN_FILE_FAILED, new_image_file);
+            error_set_errno(errp, -ret, QERR_OPEN_FILE_FAILED, new_image_file);
             goto delete_and_fail;
         }
     }
@@ -900,7 +900,7 @@ static void qmp_bdrv_open_encrypted(BlockDriverState *bs, const char *filename,
                                     const char *password, Error **errp)
 {
     if (bdrv_open(bs, filename, bdrv_flags, drv) < 0) {
-        error_set(errp, QERR_OPEN_FILE_FAILED, filename);
+        error_set_errno(errp, -ret, QERR_OPEN_FILE_FAILED, filename);
         return;
     }
 

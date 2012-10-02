@@ -2241,7 +2241,7 @@ void qmp_xen_save_devices_state(const char *filename, Error **errp)
 
     f = qemu_fopen(filename, "wb");
     if (!f) {
-        error_set(errp, QERR_OPEN_FILE_FAILED, filename);
+        error_set_errno(errp, errno, QERR_OPEN_FILE_FAILED, filename);
         goto the_end;
     }
     ret = qemu_save_device_state(f);
