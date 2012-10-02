@@ -401,10 +401,10 @@ int inet_connect_opts(IPSocketAddress *addr, Error **errp,
     return sock;
 }
 
-int inet_dgram_opts(QemuOpts *opts, Error **errp)
+int inet_dgram_opts(IPDatagramAddress *addr, Error **errp)
 {
     struct addrinfo ai, *peer = NULL, *local = NULL;
-    const char *addr;
+    const char *host;
     const char *port;
     int sock = -1, rc;
 
@@ -414,23 +414,18 @@ int inet_dgram_opts(QemuOpts *opts, Error **errp)
     ai.ai_family = PF_UNSPEC;
     ai.ai_socktype = SOCK_DGRAM;
 
-    addr = qemu_opt_get(opts, "host");
-    port = qemu_opt_get(opts, "port");
-    if (addr == NULL || strlen(addr) == 0) {
-        addr = "localhost";
-    }
-    if (port == NULL || strlen(port) == 0) {
-        error_setg(errp, "remote port not specified");
-        return -1;
+    if (!addr->has_host) {
+        addr->has_host = true;
+        addr->host = g_strdup("localhost");
     }
 
-    if (qemu_opt_get_bool(opts, "ipv4", 0))
+    if (addr->has_ipv4 && addr->ipv4)
         ai.ai_family = PF_INET;
-    if (qemu_opt_get_bool(opts, "ipv6", 0))
+    if (addr->has_ipv6 && addr->ipv6)
         ai.ai_family = PF_INET6;
 
     if (0 != (rc = getaddrinfo(addr, port, &ai, &peer))) {
-        error_setg(errp, "address resolution failed for %s:%s: %s", addr, port,
+        error_setg(errp, "address resolution failed for %s:%s: %s", addr->host, addr->port,
                    gai_strerror(rc));
 	return -1;
     }
@@ -441,16 +436,10 @@ int inet_dgram_opts(QemuOpts *opts, Error **errp)
     ai.ai_family = peer->ai_family;
     ai.ai_socktype = SOCK_DGRAM;
 
-    addr = qemu_opt_get(opts, "localaddr");
-    port = qemu_opt_get(opts, "localport");
-    if (addr == NULL || strlen(addr) == 0) {
-        addr = NULL;
-    }
-    if (!port || strlen(port) == 0)
-        port = "0";
-
-    if (0 != (rc = getaddrinfo(addr, port, &ai, &local))) {
-        error_setg(errp, "address resolution failed for %s:%s: %s", addr, port,
+    host = addr->has_localaddr ? addr->localaddr : NULL;
+    port = addr->has_localport ? addr->localport : "0";
+    if (0 != (rc = getaddrinfo(host, port, &ai, &local))) {
+        error_setg(errp, "address resolution failed for %s:%s: %s", host, port,
                    gai_strerror(rc));
         goto err;
     }

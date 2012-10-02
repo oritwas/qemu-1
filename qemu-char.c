@@ -2101,12 +2101,27 @@ static CharDriverState *qemu_chr_open_udp(QemuOpts *opts)
     CharDriverState *chr = NULL;
     NetCharDriver *s = NULL;
     Error *local_err = NULL;
+    IPDatagramAddress *addr = NULL;
     int fd = -1;
+
+    OptsVisitor *ov = opts_visitor_new(opts);
+    Visitor *v = opts_get_visitor(ov);
+    char *backend = NULL, *id = NULL;
+    visit_type_str(v, &backend, "backend", NULL);
+    visit_type_str(v, &id, "id", NULL);
+    visit_type_IPDatagramAddress(v, &addr, NULL, &local_err);
+    opts_visitor_cleanup(ov);
+    g_free(backend);
+    g_free(id);
+
+    if (local_err) {
+        goto return_err;
+    }
 
     chr = g_malloc0(sizeof(CharDriverState));
     s = g_malloc0(sizeof(NetCharDriver));
 
-    fd = inet_dgram_opts(opts, &local_err);
+    fd = inet_dgram_opts(addr, &local_err);
     if (fd < 0) {
         goto return_err;
     }
@@ -2125,6 +2140,7 @@ return_err:
         qerror_report_err(local_err);
         error_free(local_err);
     }
+    qapi_free_IPDatagramAddress(addr);
     g_free(chr);
     g_free(s);
     if (fd >= 0) {

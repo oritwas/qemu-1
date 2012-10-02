@@ -53,7 +53,7 @@ int inet_nonblocking_connect(const char *str,
                              NonBlockingConnectHandler *callback,
                              void *opaque, Error **errp);
 
-int inet_dgram_opts(QemuOpts *opts, Error **errp);
+int inet_dgram_opts(IPDatagramAddress *addr, Error **errp);
 const char *inet_strfamily(int family);
 
 int unix_listen_opts(UnixSocketAddress *addr, Error **errp);
