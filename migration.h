@@ -32,6 +32,7 @@ struct MigrationState
 {
     int64_t bandwidth_limit;
     QEMUFile *file;
+    Error *error;
     int fd;
     int state;
     int (*get_error)(MigrationState *s);

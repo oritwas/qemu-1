@@ -234,6 +234,12 @@ MigrationInfo *qmp_query_migrate(Error **errp)
     case MIG_STATE_ERROR:
         info->has_status = true;
         info->status = MIGRATION_STATUS_FAILED;
+        if (s->error) {
+            info->has_error = true;
+            info->error = g_malloc0(sizeof(*info->error));
+            info->error->class = error_get_class(s->error);
+            info->error->desc = g_strdup(error_get_pretty(s->error));
+        }
         break;
     case MIG_STATE_CANCELLED:
         info->has_status = true;
@@ -290,6 +296,8 @@ static void migrate_fd_completed(MigrationState *s)
     if (migrate_fd_cleanup(s) < 0) {
         s->state = MIG_STATE_ERROR;
     } else {
+        error_free(s->error);
+        s->error = NULL;
         s->state = MIG_STATE_COMPLETED;
         runstate_set(RUN_STATE_POSTMIGRATE);
     }
@@ -376,6 +384,8 @@ static void migrate_fd_cancel(MigrationState *s)
 
     DPRINTF("cancelling migration\n");
 
+    error_free(s->error);
+    s->error = NULL;
     s->state = MIG_STATE_CANCELLED;
     notifier_list_notify(&migration_state_notifiers, s);
     qemu_savevm_state_cancel(s->file);
@@ -447,6 +457,8 @@ void migrate_fd_connect(MigrationState *s)
 {
     int ret;
 
+    error_free(s->error);
+    s->error = NULL;
     s->state = MIG_STATE_ACTIVE;
     s->file = qemu_fopen_ops_buffered(s);
 
@@ -477,6 +489,8 @@ static MigrationState *migrate_init(const MigrationParams *params)
            sizeof(enabled_capabilities));
     s->xbzrle_cache_size = xbzrle_cache_size;
 
+    error_free(s->error);
+    s->error = NULL;
     s->bandwidth_limit = bandwidth_limit;
     s->state = MIG_STATE_SETUP;
     s->total_time = qemu_get_clock_ms(rt_clock);
@@ -500,7 +514,6 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
                  bool has_inc, bool inc, bool has_detach, bool detach,
                  Error **errp)
 {
-    Error *local_err = NULL;
     MigrationState *s = migrate_get_current();
     MigrationParams params;
     const char *p;
@@ -523,25 +536,28 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
     }
 
     s = migrate_init(&params);
+    assert(s->error == NULL);
 
     if (strstart(uri, "tcp:", &p)) {
-        tcp_start_outgoing_migration(s, p, &local_err);
+        tcp_start_outgoing_migration(s, p, &s->error);
 #if !defined(WIN32)
     } else if (strstart(uri, "exec:", &p)) {
-        exec_start_outgoing_migration(s, p, &local_err);
+        exec_start_outgoing_migration(s, p, &s->error);
     } else if (strstart(uri, "unix:", &p)) {
-        unix_start_outgoing_migration(s, p, &local_err);
+        unix_start_outgoing_migration(s, p, &s->error);
     } else if (strstart(uri, "fd:", &p)) {
-        fd_start_outgoing_migration(s, p, &local_err);
+        fd_start_outgoing_migration(s, p, &s->error);
 #endif
     } else {
         error_set(errp, QERR_INVALID_PARAMETER_VALUE, "uri", "a valid migration protocol");
         return;
     }
 
-    if (local_err) {
+    if (s->error) {
         migrate_fd_error(s);
-        error_propagate(errp, local_err);
+        if (errp) {
+            *errp = error_copy(s->error);
+        }
         return;
     }
 

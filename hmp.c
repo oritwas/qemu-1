@@ -149,8 +149,15 @@ void hmp_info_migrate(Monitor *mon)
     }
 
     if (info->has_status) {
-        monitor_printf(mon, "Migration status: %s\n",
+        monitor_printf(mon, "Migration status: %s",
                        MigrationStatus_lookup[info->status]);
+        if (info->has_error) {
+            monitor_printf(mon, " (%s)\n", info->error->desc);
+        } else {
+            monitor_printf(mon, "\n");
+        }
+    }
+    if (info->has_status) {
         monitor_printf(mon, "total time: %" PRIu64 " milliseconds\n",
                        info->total_time);
         if (info->has_expected_downtime) {

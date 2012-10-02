@@ -29,6 +29,21 @@
             'DeviceNotActive', 'DeviceNotFound', 'KVMMissingCap' ] }
 
 ##
+# @ErrorInfo
+#
+# QEMU error information
+#
+# @class: Error class
+#
+# @desc: Human-readable description of the error.  Clients should
+#        not attempt to parse this message.
+#
+# Since: 1.3
+##
+{ 'type': 'ErrorInfo',
+  'data': { 'class': 'ErrorClass', 'desc': 'str' } }
+
+##
 # @add_client
 #
 # Allow client connections for VNC, Spice and socket based
@@ -436,6 +451,8 @@
 #          'cancelled'. If this field is not returned, no migration process
 #          has been initiated
 #
+# @error: #optional @ErrorInfo describing the migration error
+#
 # @ram: #optional @MigrationStats containing detailed migration
 #       status, only returned if status is 'active' or
 #       'completed'. 'comppleted' (since 1.2)
@@ -463,8 +480,8 @@
 # Since: 0.14.0
 ##
 { 'type': 'MigrationInfo',
-  'data': {'*status': 'MigrationStatus', '*ram': 'MigrationStats',
-           '*disk': 'MigrationStats',
+  'data': {'*status': 'MigrationStatus', '*error': 'ErrorInfo'
+           '*ram': 'MigrationStats', '*disk': 'MigrationStats',
            '*xbzrle-cache': 'XBZRLECacheStats',
            '*total-time': 'int',
            '*expected-downtime': 'int',
