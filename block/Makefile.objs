@@ -1,3 +1,4 @@
+block-obj-y += aes.o aio.o async.o block.o blockjob.o nbd.o
 block-obj-y += coroutine/ drivers/
 
 common-obj-y += stream.o

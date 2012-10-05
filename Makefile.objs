@@ -26,8 +26,7 @@ oslib-obj-$(CONFIG_POSIX) += oslib-posix.o qemu-thread-posix.o
 #######################################################################
 # block-obj-y is code used by both qemu system emulation and qemu-img
 
-block-obj-y = iov.o cache-utils.o qemu-option.o module.o async.o
-block-obj-y += nbd.o block.o aio.o aes.o qemu-config.o
+block-obj-y = iov.o cache-utils.o qemu-option.o module.o qemu-config.o
 block-obj-y += qemu-progress.o qemu-sockets.o uri.o
 block-obj-y += $(qobject-obj-y) $(version-obj-y)
 block-obj-y += block/
