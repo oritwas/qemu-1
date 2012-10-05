@@ -2,6 +2,7 @@
  * QEMU System Emulator
  *
  * Copyright (c) 2003-2008 Fabrice Bellard
+ * Copyright (c) 2009 Red Hat, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,39 +23,24 @@
  * THE SOFTWARE.
  */
 
-#include "net/util.h"
-#include <errno.h>
-#include <stdlib.h>
+#ifndef QEMU_TAP_H
+#define QEMU_TAP_H
 
-int net_parse_macaddr(uint8_t *macaddr, const char *p)
-{
-    int i;
-    char *last_char;
-    long int offset;
+#include "qemu-common.h"
+#include "qapi-types.h"
 
-    errno = 0;
-    offset = strtol(p, &last_char, 0);
-    if (errno == 0 && *last_char == '\0' &&
-        offset >= 0 && offset <= 0xFFFFFF) {
-        macaddr[3] = (offset & 0xFF0000) >> 16;
-        macaddr[4] = (offset & 0xFF00) >> 8;
-        macaddr[5] = offset & 0xFF;
-        return 0;
-    }
+#define DEFAULT_NETWORK_SCRIPT "/etc/qemu-ifup"
+#define DEFAULT_NETWORK_DOWN_SCRIPT "/etc/qemu-ifdown"
 
-    for (i = 0; i < 6; i++) {
-        macaddr[i] = strtol(p, (char **)&p, 16);
-        if (i == 5) {
-            if (*p != '\0') {
-                return -1;
-            }
-        } else {
-            if (*p != ':' && *p != '-') {
-                return -1;
-            }
-            p++;
-        }
-    }
+int tap_open(char *ifname, int ifname_size, int *vnet_hdr, int vnet_hdr_required);
 
-    return 0;
-}
+ssize_t tap_read_packet(int tapfd, uint8_t *buf, int maxlen);
+
+int tap_set_sndbuf(int fd, const NetdevTapOptions *tap);
+int tap_probe_vnet_hdr(int fd);
+int tap_probe_vnet_hdr_len(int fd, int len);
+int tap_probe_has_ufo(int fd);
+void tap_fd_set_offload(int fd, int csum, int tso4, int tso6, int ecn, int ufo);
+void tap_fd_set_vnet_hdr_len(int fd, int len);
+
+#endif /* QEMU_TAP_H */

@@ -29,13 +29,6 @@
 #include "qemu-common.h"
 #include "qapi-types.h"
 
-#define DEFAULT_NETWORK_SCRIPT "/etc/qemu-ifup"
-#define DEFAULT_NETWORK_DOWN_SCRIPT "/etc/qemu-ifdown"
-
-int tap_open(char *ifname, int ifname_size, int *vnet_hdr, int vnet_hdr_required);
-
-ssize_t tap_read_packet(int tapfd, uint8_t *buf, int maxlen);
-
 int tap_has_ufo(NetClientState *nc);
 int tap_has_vnet_hdr(NetClientState *nc);
 int tap_has_vnet_hdr_len(NetClientState *nc, int len);
@@ -43,16 +36,32 @@ void tap_using_vnet_hdr(NetClientState *nc, int using_vnet_hdr);
 void tap_set_offload(NetClientState *nc, int csum, int tso4, int tso6, int ecn, int ufo);
 void tap_set_vnet_hdr_len(NetClientState *nc, int len);
 
-int tap_set_sndbuf(int fd, const NetdevTapOptions *tap);
-int tap_probe_vnet_hdr(int fd);
-int tap_probe_vnet_hdr_len(int fd, int len);
-int tap_probe_has_ufo(int fd);
-void tap_fd_set_offload(int fd, int csum, int tso4, int tso6, int ecn, int ufo);
-void tap_fd_set_vnet_hdr_len(int fd, int len);
-
 int tap_get_fd(NetClientState *nc);
 
 struct vhost_net;
 struct vhost_net *tap_get_vhost_net(NetClientState *nc);
+
+struct virtio_net_hdr
+{
+#define VIRTIO_NET_HDR_F_NEEDS_CSUM     1       // Use csum_start, csum_offset
+#define VIRTIO_NET_HDR_F_DATA_VALID	2	// Csum is valid
+    uint8_t flags;
+#define VIRTIO_NET_HDR_GSO_NONE         0       // Not a GSO frame
+#define VIRTIO_NET_HDR_GSO_TCPV4        1       // GSO frame, IPv4 TCP (TSO)
+#define VIRTIO_NET_HDR_GSO_UDP          3       // GSO frame, IPv4 UDP (UFO)
+#define VIRTIO_NET_HDR_GSO_TCPV6        4       // GSO frame, IPv6 TCP
+#define VIRTIO_NET_HDR_GSO_ECN          0x80    // TCP has ECN set
+    uint8_t gso_type;
+    uint16_t hdr_len;
+    uint16_t gso_size;
+    uint16_t csum_start;
+    uint16_t csum_offset;
+};
+
+struct virtio_net_hdr_mrg_rxbuf
+{
+    struct virtio_net_hdr hdr;
+    uint16_t num_buffers;   /* Number of merged rx buffers */
+};
 
 #endif /* QEMU_NET_TAP_H */

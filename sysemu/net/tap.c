@@ -41,7 +41,7 @@
 #include "qemu-common.h"
 #include "qemu-error.h"
 
-#include "net/tap-linux.h"
+#include "net/tap.h"
 
 #include "hw/vhost_net.h"
 

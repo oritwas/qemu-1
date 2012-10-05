@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 
-#include "net/tap.h"
+#include "tap.h"
 #include "qemu-common.h"
 #include "sysemu.h"
 #include "qemu-error.h"

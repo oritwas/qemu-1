@@ -37,7 +37,6 @@ endif
 # single QEMU executable should support all CPUs and machines.
 
 common-obj-y = $(block-obj-y) blockdev.o block/
-common-obj-y += net/
 common-obj-y += qom/
 common-obj-y += readline.o
 common-obj-y += $(oslib-obj-y)

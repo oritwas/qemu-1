@@ -23,8 +23,9 @@
  * THE SOFTWARE.
  */
 
-#include "net/tap.h"
+#include "tap.h"
 #include "net/tap-linux.h"
+#include "net/tap.h"
 
 #include <net/if.h>
 #include <sys/ioctl.h>
