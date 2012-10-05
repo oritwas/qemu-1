@@ -43,11 +43,6 @@ common-obj-y += $(oslib-obj-y)
 common-obj-$(CONFIG_WIN32) += os-win32.o
 common-obj-$(CONFIG_POSIX) += os-posix.o
 
-common-obj-y += buffered_file.o migration.o migration-tcp.o
-common-obj-y += block-migration.o
-common-obj-y += page_cache.o
-
-common-obj-$(CONFIG_POSIX) += migration-exec.o migration-unix.o migration-fd.o
 common-obj-$(CONFIG_WIN32) += version.o
 
 common-obj-y += sysemu/

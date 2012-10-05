@@ -14,7 +14,6 @@
 #ifndef BLOCK_MIGRATION_H
 #define BLOCK_MIGRATION_H
 
-void blk_mig_init(void);
 int blk_mig_active(void);
 uint64_t blk_mig_bytes_transferred(void);
 uint64_t blk_mig_bytes_remaining(void);

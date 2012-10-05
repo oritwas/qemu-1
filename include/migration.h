@@ -119,4 +119,6 @@ int64_t migrate_xbzrle_cache_size(void);
 
 int64_t xbzrle_cache_resize(int64_t new_size);
 
+void blk_mig_init(void);
+
 #endif

@@ -138,7 +138,6 @@ int main(int argc, char **argv)
 #include "cache-utils.h"
 #include "blockdev.h"
 #include "hw/block-common.h"
-#include "block-migration.h"
 #include "dma.h"
 #include "audio/audio.h"
 #include "migration.h"
