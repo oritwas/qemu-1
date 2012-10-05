@@ -1,0 +1,1 @@
+common-obj-y = blockdev.o stream.o commit.o

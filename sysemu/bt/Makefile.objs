@@ -1,0 +1,3 @@
+common-obj-y = host.o vhci.o
+
+$(obj)/host.o: QEMU_CFLAGS += $(BLUEZ_CFLAGS)

@@ -1,0 +1,2 @@
+common-obj-y = chardev.o msmouse.o
+common-obj-$(CONFIG_SPICE) += spice.o
