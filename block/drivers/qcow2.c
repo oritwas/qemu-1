@@ -26,7 +26,7 @@
 #include "module.h"
 #include <zlib.h>
 #include "aes.h"
-#include "block/qcow2.h"
+#include "qcow2.h"
 #include "qemu-error.h"
 #include "qerror.h"
 #include "trace.h"

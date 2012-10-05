@@ -9,7 +9,7 @@
  */
 #include "qemu-common.h"
 #include "qemu-aio.h"
-#include "block/raw-posix-aio.h"
+#include "raw-posix-aio.h"
 
 #include <sys/eventfd.h>
 #include <libaio.h>

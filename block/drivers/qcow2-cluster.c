@@ -26,7 +26,7 @@
 
 #include "qemu-common.h"
 #include "block_int.h"
-#include "block/qcow2.h"
+#include "qcow2.h"
 #include "trace.h"
 
 int qcow2_grow_l1_table(BlockDriverState *bs, int min_size, bool exact_size)

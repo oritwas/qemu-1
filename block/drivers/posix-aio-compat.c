@@ -31,7 +31,7 @@
 #include "block_int.h"
 #include "iov.h"
 
-#include "block/raw-posix-aio.h"
+#include "raw-posix-aio.h"
 
 static void do_spawn_thread(void);
 

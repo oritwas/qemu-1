@@ -45,8 +45,6 @@ block-obj-y = iov.o cache-utils.o qemu-option.o module.o async.o
 block-obj-y += nbd.o block.o aio.o aes.o qemu-config.o
 block-obj-y += qemu-progress.o qemu-sockets.o uri.o
 block-obj-y += $(coroutine-obj-y) $(qobject-obj-y) $(version-obj-y)
-block-obj-$(CONFIG_POSIX) += posix-aio-compat.o
-block-obj-$(CONFIG_LINUX_AIO) += linux-aio.o
 block-obj-y += block/
 
 ifeq ($(CONFIG_VIRTIO)$(CONFIG_VIRTFS)$(CONFIG_PCI),yyy)

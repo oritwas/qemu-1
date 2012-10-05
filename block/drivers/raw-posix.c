@@ -27,7 +27,7 @@
 #include "qemu-log.h"
 #include "block_int.h"
 #include "module.h"
-#include "block/raw-posix-aio.h"
+#include "raw-posix-aio.h"
 
 #if defined(__APPLE__) && (__MACH__)
 #include <paths.h>
