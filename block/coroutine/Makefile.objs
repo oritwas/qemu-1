@@ -1,0 +1,11 @@
+block-obj-y = coroutine.o lock.o io.o sleep.o
+ifeq ($(CONFIG_UCONTEXT_COROUTINE),y)
+block-obj-$(CONFIG_POSIX) += ucontext.o
+else
+ifeq ($(CONFIG_SIGALTSTACK_COROUTINE),y)
+block-obj-$(CONFIG_POSIX) += sigaltstack.o
+else
+block-obj-$(CONFIG_POSIX) += gthread.o
+endif
+endif
+block-obj-$(CONFIG_WIN32) += win32.o

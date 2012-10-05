@@ -24,27 +24,12 @@ oslib-obj-$(CONFIG_WIN32) += oslib-win32.o qemu-thread-win32.o
 oslib-obj-$(CONFIG_POSIX) += oslib-posix.o qemu-thread-posix.o
 
 #######################################################################
-# coroutines
-coroutine-obj-y = qemu-coroutine.o qemu-coroutine-lock.o qemu-coroutine-io.o
-coroutine-obj-y += qemu-coroutine-sleep.o
-ifeq ($(CONFIG_UCONTEXT_COROUTINE),y)
-coroutine-obj-$(CONFIG_POSIX) += coroutine-ucontext.o
-else
-ifeq ($(CONFIG_SIGALTSTACK_COROUTINE),y)
-coroutine-obj-$(CONFIG_POSIX) += coroutine-sigaltstack.o
-else
-coroutine-obj-$(CONFIG_POSIX) += coroutine-gthread.o
-endif
-endif
-coroutine-obj-$(CONFIG_WIN32) += coroutine-win32.o
-
-#######################################################################
 # block-obj-y is code used by both qemu system emulation and qemu-img
 
 block-obj-y = iov.o cache-utils.o qemu-option.o module.o async.o
 block-obj-y += nbd.o block.o aio.o aes.o qemu-config.o
 block-obj-y += qemu-progress.o qemu-sockets.o uri.o
-block-obj-y += $(coroutine-obj-y) $(qobject-obj-y) $(version-obj-y)
+block-obj-y += $(qobject-obj-y) $(version-obj-y)
 block-obj-y += block/
 
 ifeq ($(CONFIG_VIRTIO)$(CONFIG_VIRTFS)$(CONFIG_PCI),yyy)

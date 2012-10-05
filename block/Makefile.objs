@@ -1,4 +1,4 @@
-block-obj-y += drivers/
+block-obj-y += coroutine/ drivers/
 
 common-obj-y += stream.o
 common-obj-y += commit.o
