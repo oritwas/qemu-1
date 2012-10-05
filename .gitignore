@@ -11,7 +11,7 @@ trace-dtrace.dtrace
 *-darwin-user
 *-linux-user
 *-bsd-user
-libdis*
+libdis-user
 libhw
 libhw32
 libhw64

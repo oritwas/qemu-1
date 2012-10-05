@@ -66,10 +66,9 @@ all: $(PROGS) stap
 
 #########################################################
 # cpu emulator library
-obj-y = exec/
+obj-y = exec/ disass/
 obj-y += tcg/tcg.o tcg/optimize.o
 obj-y += fpu/softfloat.o
-obj-$(CONFIG_TCI_DIS) += tci-dis.o
 obj-y += target-$(TARGET_BASE_ARCH)/
 obj-$(CONFIG_GDBSTUB_XML) += gdbstub-xml.o
 
