@@ -4,8 +4,39 @@ common-obj-y += ui/
 common-obj-y += migration/
 common-obj-y += net/
 
+common-obj-$(CONFIG_WIN32) += os-win32.o
+common-obj-$(CONFIG_POSIX) += os-posix.o
+common-obj-$(CONFIG_SECCOMP) += seccomp.o
+
 common-obj-$(CONFIG_LINUX) += fsdev/
 extra-obj-$(CONFIG_LINUX) += fsdev/
 common-obj-$(CONFIG_SLIRP) += slirp/
 
+hw-obj-y += vl.o qtest.o
+
+CONFIG_NO_KVM = $(if $(subst n,,$(CONFIG_KVM)),n,y)
+CONFIG_NO_XEN = $(if $(subst n,,$(CONFIG_XEN)),n,y)
+CONFIG_NO_GET_MEMORY_MAPPING = $(if $(subst n,,$(CONFIG_HAVE_GET_MEMORY_MAPPING)),n,y)
+CONFIG_NO_CORE_DUMP = $(if $(subst n,,$(CONFIG_HAVE_CORE_DUMP)),n,y)
+
+obj-y += arch_init.o cpus.o balloon.o ioport.o
+obj-y += memory.o cputlb.o
 obj-y += migration/
+
+obj-$(CONFIG_KVM) += kvm-all.o
+obj-$(CONFIG_NO_KVM) += kvm-stub.o
+obj-$(CONFIG_HAVE_GET_MEMORY_MAPPING) += memory_mapping.o
+obj-$(CONFIG_HAVE_CORE_DUMP) += dump.o
+obj-$(CONFIG_NO_GET_MEMORY_MAPPING) += memory_mapping-stub.o
+obj-$(CONFIG_NO_CORE_DUMP) += dump-stub.o
+
+# xen support
+obj-$(CONFIG_XEN) += xen-all.o xen-mapcache.o
+obj-$(CONFIG_NO_XEN) += xen-stub.o
+
+$(obj)/qemu-options.def: $(SRC_PATH)/$(obj)/qemu-options.hx
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")
+
+$(obj)/os-posix.o: $(obj)/qemu-options.def
+$(obj)/os-win32.o: $(obj)/qemu-options.def
+$(obj)/vl.o: $(obj)/qemu-options.def

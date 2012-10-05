@@ -4119,7 +4119,7 @@ done # for target in $targets
 DIRS="tests tests/tcg tests/tcg/cris tests/tcg/lm32"
 DIRS="$DIRS pc-bios/optionrom pc-bios/spapr-rtas"
 DIRS="$DIRS roms/seabios roms/vgabios"
-DIRS="$DIRS qapi-generated"
+DIRS="$DIRS qapi-generated sysemu"
 DIRS="$DIRS libcacard libcacard/libcacard libcacard/trace libcacard/util"
 FILES="Makefile tests/tcg/Makefile qdict-test-data.txt"
 FILES="$FILES tests/tcg/cris/Makefile tests/tcg/cris/.gdbinit"

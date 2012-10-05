@@ -99,31 +99,14 @@ endif #CONFIG_BSD_USER
 #########################################################
 # System emulator target
 ifdef CONFIG_SOFTMMU
-CONFIG_NO_PCI = $(if $(subst n,,$(CONFIG_PCI)),n,y)
-CONFIG_NO_KVM = $(if $(subst n,,$(CONFIG_KVM)),n,y)
-CONFIG_NO_XEN = $(if $(subst n,,$(CONFIG_XEN)),n,y)
-CONFIG_NO_GET_MEMORY_MAPPING = $(if $(subst n,,$(CONFIG_HAVE_GET_MEMORY_MAPPING)),n,y)
-CONFIG_NO_CORE_DUMP = $(if $(subst n,,$(CONFIG_HAVE_CORE_DUMP)),n,y)
-
-obj-y += arch_init.o cpus.o monitor.o balloon.o ioport.o
+obj-y += monitor.o
 obj-y += hw/ sysemu/
-obj-$(CONFIG_KVM) += kvm-all.o
-obj-$(CONFIG_NO_KVM) += kvm-stub.o
-obj-y += memory.o cputlb.o
-obj-$(CONFIG_HAVE_GET_MEMORY_MAPPING) += memory_mapping.o
-obj-$(CONFIG_HAVE_CORE_DUMP) += dump.o
-obj-$(CONFIG_NO_GET_MEMORY_MAPPING) += memory_mapping-stub.o
-obj-$(CONFIG_NO_CORE_DUMP) += dump-stub.o
 LIBS+=-lz
 
 QEMU_CFLAGS += $(VNC_TLS_CFLAGS)
 QEMU_CFLAGS += $(VNC_SASL_CFLAGS)
 QEMU_CFLAGS += $(VNC_JPEG_CFLAGS)
 QEMU_CFLAGS += $(VNC_PNG_CFLAGS)
-
-# xen support
-obj-$(CONFIG_XEN) += xen-all.o xen-mapcache.o
-obj-$(CONFIG_NO_XEN) += xen-stub.o
 
 # Hardware support
 ifeq ($(TARGET_ARCH), sparc64)

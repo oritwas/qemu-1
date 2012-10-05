@@ -18,7 +18,7 @@ config-host.mak:
 	@exit 1
 endif
 
-GENERATED_HEADERS = config-host.h trace.h qemu-options.def
+GENERATED_HEADERS = config-host.h trace.h
 ifeq ($(TRACE_BACKEND),dtrace)
 GENERATED_HEADERS += trace-dtrace.h
 endif
@@ -91,8 +91,6 @@ all: $(DOCS) $(TOOLS) $(HELPERS-y) recurse-all
 
 config-host.h: config-host.h-timestamp
 config-host.h-timestamp: config-host.mak
-qemu-options.def: $(SRC_PATH)/qemu-options.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")
 
 SUBDIR_RULES=$(patsubst %,subdir-%, $(TARGET_DIRS))
 
@@ -207,7 +205,7 @@ QEMULIBS=libhw libuser libdis libdis-user
 clean:
 # avoid old build problems by removing potentially incorrect old files
 	rm -f config.mak op-i386.h opc-i386.h gen-op-i386.h op-arm.h opc-arm.h gen-op-arm.h
-	rm -f qemu-options.def
+	rm -f sysemu/qemu-options.def
 	find . -name '*.[od]' -exec rm -f {} +
 	rm -f *.a *.lo $(TOOLS) $(HELPERS-y) qemu-ga TAGS cscope.* *.pod *~ */*~
 	rm -Rf .libs
@@ -344,7 +342,7 @@ TEXIFLAG=$(if $(V),,--quiet)
 %.pdf: %.texi
 	$(call quiet-command,texi2pdf $(TEXIFLAG) -I . $<,"  GEN   $@")
 
-qemu-options.texi: $(SRC_PATH)/qemu-options.hx
+qemu-options.texi: $(SRC_PATH)/sysemu/qemu-options.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
 
 qemu-monitor.texi: $(SRC_PATH)/hmp-commands.hx
