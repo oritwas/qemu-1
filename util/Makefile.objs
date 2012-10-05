@@ -1,0 +1,28 @@
+block-obj-y += iov.o cache-utils.o option.o module.o config-file.o progress.o
+block-obj-y += sockets.o uri.o
+
+common-obj-y += acl.o
+common-obj-y += bitmap.o bitops.o
+common-obj-$(CONFIG_POSIX) += compatfd.o
+common-obj-y += host-utils.o
+common-obj-y += notify.o event_notifier.o
+common-obj-y += timer.o clock.o
+common-obj-y += main-loop.o iohandler.o
+
+oslib-obj-y = osdep.o cutils.o
+oslib-obj-$(CONFIG_WIN32) += oslib-win32.o thread-win32.o
+oslib-obj-$(CONFIG_POSIX) += oslib-posix.o thread-posix.o
+
+tools-obj-y = timer.o clock.o main-loop.o
+tools-obj-y += notify.o iohandler.o
+tools-obj-$(CONFIG_POSIX) += compatfd.o
+
+qobject-obj-y = error.o
+
+qga-obj-y = module.o
+qga-obj-$(CONFIG_POSIX) += sockets.o option.o
+
+universal-obj-y += log.o
+
+user-obj-y += envlist.o path.o host-utils.o
+user-obj-y += cache-utils.o module.o
