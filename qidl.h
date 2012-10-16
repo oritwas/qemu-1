@@ -18,8 +18,6 @@
 
 #include <glib.h>
 #include "qapi/qapi-visit-core.h"
-#include "qemu/object.h"
-#include "hw/qdev-properties.h"
 
 /* must be "called" in any C files that make use of QIDL-generated code */
 #define QIDL_ENABLE()
@@ -42,8 +40,8 @@
     static struct { \
         void (*visitor)(Visitor *, struct name **, const char *, Error **); \
         const char *schema_json_text; \
-        Object *schema_obj; \
-        Property *properties; \
+        struct Object *schema_obj; \
+        struct Property *properties; \
     } qidl_data_##name;
 #else
 #define QIDL_START(name,  ...)

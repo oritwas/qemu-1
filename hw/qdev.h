@@ -57,22 +57,22 @@ typedef struct DeviceClass {
 
 /* This structure should not be accessed directly.  We declare it here
    so that it can be embedded in individual device state structures.  */
-struct DeviceState {
+QIDL_DECLARE(DeviceState) {
     Object parent_obj;
 
-    const char *id;
-    enum DevState state;
-    QemuOpts *opts;
-    int hotplugged;
-    BusState *parent_bus;
-    int num_gpio_out;
-    qemu_irq *gpio_out;
-    int num_gpio_in;
-    qemu_irq *gpio_in;
-    QLIST_HEAD(, BusState) child_bus;
-    int num_child_bus;
-    int instance_id_alias;
-    int alias_required_for_version;
+    const char q_immutable *id;
+    enum DevState q_immutable state;
+    QemuOpts q_immutable *opts;
+    int q_immutable hotplugged;
+    BusState q_immutable *parent_bus;
+    int q_immutable num_gpio_out;
+    qemu_irq q_immutable *gpio_out;
+    int q_immutable num_gpio_in;
+    qemu_irq q_immutable *gpio_in;
+    QLIST_HEAD(, BusState) q_immutable child_bus;
+    int q_immutable num_child_bus;
+    int q_immutable instance_id_alias;
+    int q_immutable alias_required_for_version;
 };
 
 #define TYPE_BUS "bus"

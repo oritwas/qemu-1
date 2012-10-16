@@ -240,7 +240,7 @@ def main(argv=[]):
 
     output_filepath = None
     schema_filepath = None
-    includes = []
+    includes = ["hw/qdev-properties.h"]
     for o, a in opts:
         if o in ("-f", "--output-filepath"):
             output_filepath = a

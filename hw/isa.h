@@ -31,11 +31,11 @@ struct ISABus {
     qemu_irq *irqs;
 };
 
-struct ISADevice {
+QIDL_DECLARE(ISADevice) {
     DeviceState qdev;
-    uint32_t isairq[2];
-    int nirqs;
-    int ioport_id;
+    uint32_t q_immutable isairq[2];
+    int q_immutable nirqs;
+    int q_immutable ioport_id;
 };
 
 ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space_io);

@@ -62,7 +62,7 @@ QIDL_ENABLE()
 typedef struct RTCState RTCState;
 
 QIDL_DECLARE(RTCState) {
-    ISADevice q_immutable dev;
+    ISADevice dev;
     MemoryRegion q_immutable io;
     uint8_t cmos_data[128];
     uint8_t cmos_index;

@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "qemu-queue.h"
+#include "qidl.h"
 
 struct Visitor;
 struct Error;
@@ -257,13 +258,13 @@ struct ObjectClass
  * #Object also contains a list of #Interfaces that this object
  * implements.
  */
-struct Object
+QIDL_DECLARE(Object)
 {
     /*< private >*/
-    ObjectClass *class;
-    QTAILQ_HEAD(, ObjectProperty) properties;
-    uint32_t ref;
-    Object *parent;
+    ObjectClass q_immutable *class;
+    QTAILQ_HEAD(, ObjectProperty) q_immutable properties;
+    uint32_t q_elsewhere ref;
+    Object q_immutable *parent;
 };
 
 /**
