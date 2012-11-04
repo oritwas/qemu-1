@@ -78,6 +78,7 @@
 #define PCI_DEVICE_ID_VIRTIO_SCSI        0x1004
 #define PCI_DEVICE_ID_VIRTIO_RNG         0x1005
 #define PCI_DEVICE_ID_VIRTIO_9P          0x1009
+#define PCI_DEVICE_ID_QUMRANET_IVSHMEM   0x1110
 
 #define FMT_PCIBUS                      PRIx64
 
