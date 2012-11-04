@@ -800,7 +800,7 @@ static void ivshmem_class_init(ObjectClass *klass, void *data)
     k->init = pci_ivshmem_init;
     k->exit = pci_ivshmem_uninit;
     k->vendor_id = PCI_VENDOR_ID_REDHAT_QUMRANET;
-    k->device_id = 0x1110;
+    k->device_id = PCI_DEVICE_ID_QUMRANET_IVSHMEM;
     k->class_id = PCI_CLASS_MEMORY_RAM;
     dc->reset = ivshmem_reset;
     dc->props = ivshmem_properties;

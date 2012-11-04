@@ -29,4 +29,6 @@ maintained as part of the virtio specification.
 1af4:1100  Used as PCI Subsystem ID for existing hardware devices emulated
            by qemu.
 
+1af4:1110  ivshmem (shared memory) device
+
 All other device IDs are reserved.
