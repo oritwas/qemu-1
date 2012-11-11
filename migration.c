@@ -534,15 +534,13 @@ static void *buffered_file_thread(void *opaque)
             continue;
         }
 
-        DPRINTF("notifying client\n");
-        last_round = false;
-
-        qemu_mutex_lock_iothread();
+        DPRINTF("file is ready\n");
         if (s->state != MIG_STATE_ACTIVE) {
-            DPRINTF("put_ready returning because of non-active state\n");
-            qemu_mutex_unlock_iothread();
             continue;
         }
+
+        DPRINTF("notifying client\n");
+        qemu_mutex_lock_iothread();
         if (s->first_time) {
             s->first_time = false;
             DPRINTF("beginning savevm\n");
