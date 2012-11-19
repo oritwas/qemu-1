@@ -193,7 +193,7 @@ static int buffered_rate_limit(void *opaque)
     if (s->freeze_output)
         return 1;
 
-    if (s->bytes_xfer > s->xfer_limit)
+    if (s->buffer_size > s->xfer_limit)
         return 1;
 
     return 0;
