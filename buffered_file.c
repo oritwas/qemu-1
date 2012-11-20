@@ -89,33 +89,6 @@ static ssize_t buffered_flush(QEMUFileBuffered *s)
     return offset;
 }
 
-static bool buffered_restart(QEMUFileBuffered *s)
-{
-    ssize_t error;
-
-    error = qemu_file_get_error(s->file);
-    if (error) {
-        DPRINTF("flush when error, bailing: %s\n", strerror(-error));
-        return false;
-    }
-
-    DPRINTF("unfreezing output\n");
-    error = buffered_flush(s);
-    if (error < 0) {
-        DPRINTF("buffered flush error. bailing: %s\n", strerror(-error));
-        return false;
-    }
-
-    DPRINTF("file is ready\n");
-    if (qemu_file_rate_limit(s->file)) {
-        return true;
-    }
-
-    DPRINTF("notifying client\n");
-    migrate_fd_put_ready(s->migration_state);
-    return false;
-}
-
 static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, int size)
 {
     QEMUFileBuffered *s = opaque;
@@ -228,7 +201,6 @@ static void *buffered_file_thread(void *opaque)
 
     while (true) {
         int64_t current_time = qemu_get_clock_ms(rt_clock);
-        bool wait;
 
         if (s->migration_state->complete) {
             break;
@@ -237,11 +209,17 @@ static void *buffered_file_thread(void *opaque)
             s->bytes_xfer = 0;
             expire_time = current_time + BUFFER_DELAY;
         }
-        if (buffered_restart(s)) {
+        buffered_flush(s);
+        if (qemu_file_rate_limit(s->file)) {
             /* usleep expects microseconds */
             g_usleep((expire_time - current_time)*1000);
+            continue;
         }
+
+        DPRINTF("notifying client\n");
+        migrate_fd_put_ready(s->migration_state);
     }
+
     g_free(s->buffer);
     g_free(s);
     return NULL;
