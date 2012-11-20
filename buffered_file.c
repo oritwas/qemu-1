@@ -233,10 +233,9 @@ static void buffered_rate_tick(void *opaque)
 
     qemu_mod_timer(s->timer, qemu_get_clock_ms(rt_clock) + 100);
 
+    s->bytes_xfer = 0;
     if (s->freeze_output)
         return;
-
-    s->bytes_xfer = 0;
 
     buffered_put_buffer(s, NULL, 0, 0);
 }
