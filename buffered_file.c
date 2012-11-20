@@ -125,7 +125,7 @@ static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, in
 
     if (pos == 0 && size == 0) {
         DPRINTF("file is ready\n");
-        if (!s->freeze_output && s->bytes_xfer < s->xfer_limit) {
+        if (!qemu_file_rate_limit(s->file)) {
             DPRINTF("notifying client\n");
             migrate_fd_put_ready(s->migration_state);
         }
@@ -190,10 +190,7 @@ static int buffered_rate_limit(void *opaque)
     if (ret) {
         return ret;
     }
-    if (s->freeze_output)
-        return 1;
-
-    if (s->bytes_xfer > s->xfer_limit)
+    if (s->buffer_size >= s->xfer_limit)
         return 1;
 
     return 0;
