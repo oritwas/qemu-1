@@ -474,33 +474,26 @@ static void *buffered_file_thread(void *opaque)
     int64_t start_time = initial_time;
     bool old_vm_running = false;
     bool first_time = true;
-    bool last_round = false;
     uint64_t pending_size;
 
     while (s->state == MIG_STATE_ACTIVE) {
         int64_t current_time = qemu_get_clock_ms(rt_clock);
 
-        if (last_round || current_time >= initial_time + BUFFER_DELAY) {
-            if (current_time >= initial_time + BUFFER_DELAY) {
-                uint64_t transferred_bytes = s->bytes_xfer;
-                uint64_t time_spent = current_time - initial_time;
-                double bandwidth = transferred_bytes / time_spent;
-                max_size = bandwidth * migrate_max_downtime() / 1000000;
-                initial_time = current_time;
+        if (current_time >= initial_time + BUFFER_DELAY) {
+            uint64_t transferred_bytes = s->bytes_xfer;
+            uint64_t time_spent = current_time - initial_time;
+            double bandwidth = transferred_bytes / time_spent;
+            max_size = bandwidth * migrate_max_downtime() / 1000000;
+            initial_time = current_time;
 
-                DPRINTF("transferred %" PRIu64 " time_spent %" PRIu64
-                        " bandwidth %g max_size %" PRId64 "\n",
-                        transferred_bytes, time_spent, bandwidth, max_size);
-            }
+            DPRINTF("transferred %" PRIu64 " time_spent %" PRIu64
+                    " bandwidth %g max_size %" PRId64 "\n",
+                    transferred_bytes, time_spent, bandwidth, max_size);
 
             s->bytes_xfer = 0;
         }
         if (qemu_file_get_error(s->file)) {
             s->state = MIG_STATE_ERROR;
-            continue;
-        }
-        if (last_round) {
-            s->state = MIG_STATE_COMPLETED;
             continue;
         }
         if (qemu_file_rate_limit(s->file)) {
@@ -531,8 +524,11 @@ static void *buffered_file_thread(void *opaque)
             start_time = qemu_get_clock_ms(rt_clock);
             vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
             s->xfer_limit = INT_MAX;
-            qemu_savevm_state_complete(s->file);
-            last_round = true;
+            if (qemu_savevm_state_complete(s->file) < 0) {
+                s->state = MIG_STATE_ERROR;
+            } else {
+                s->state = MIG_STATE_COMPLETED;
+            }
             qemu_mutex_unlock_iothread();
         }
     }
@@ -545,7 +541,6 @@ static void *buffered_file_thread(void *opaque)
         runstate_set(RUN_STATE_POSTMIGRATE);
     } else {
         if (old_vm_running) {
-            assert(last_round);
             vm_start();
         }
     }
