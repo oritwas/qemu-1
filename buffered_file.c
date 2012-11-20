@@ -109,12 +109,16 @@ static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, in
         return error;
     }
 
-    DPRINTF("unfreezing output\n");
-    s->freeze_output = 0;
-
     if (size > 0) {
         DPRINTF("buffering %d bytes\n", size - offset);
         buffered_append(s, buf, size);
+    }
+
+    if (pos == 0 && size == 0) {
+        DPRINTF("unfreezing output\n");
+        s->freeze_output = 0;
+    } else if (s->freeze_output) {
+        return size;
     }
 
     error = buffered_flush(s);
