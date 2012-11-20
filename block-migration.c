@@ -535,7 +535,7 @@ static int block_save_setup(QEMUFile *f, void *opaque)
     return 0;
 }
 
-static int block_save_iterate(QEMUFile *f, void *opaque)
+static int block_save_iterate_locked(QEMUFile *f, void *opaque)
 {
     int ret;
 
@@ -582,6 +582,15 @@ static int block_save_iterate(QEMUFile *f, void *opaque)
     qemu_put_be64(f, BLK_MIG_FLAG_EOS);
 
     return 0;
+}
+
+static int block_save_iterate(QEMUFile *f, void *opaque)
+{
+    int ret;
+    qemu_mutex_lock_iothread();
+    ret = block_save_iterate_locked(f, opaque);
+    qemu_mutex_unlock_iothread();
+    return ret;
 }
 
 static int block_save_complete(QEMUFile *f, void *opaque)
