@@ -96,10 +96,41 @@ static ssize_t buffered_flush(QEMUFileBuffered *s)
     return offset;
 }
 
+static void buffered_restart(QEMUFileBuffered *s)
+{
+    ssize_t error;
+
+    error = qemu_file_get_error(s->file);
+    if (error) {
+        DPRINTF("flush when error, bailing: %s\n", strerror(-error));
+        return;
+    }
+
+    DPRINTF("unfreezing output\n");
+    s->freeze_output = 0;
+    error = buffered_flush(s);
+    if (error < 0) {
+        DPRINTF("buffered flush error. bailing: %s\n", strerror(-error));
+        return;
+    }
+
+    DPRINTF("file is ready\n");
+    if (!qemu_file_rate_limit(s->file)) {
+        DPRINTF("notifying client\n");
+        migrate_fd_put_ready(s->migration_state);
+    }
+}
+
 static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, int size)
 {
     QEMUFileBuffered *s = opaque;
     ssize_t error;
+
+    if (pos == 0 && size == 0) {
+        DPRINTF("unfreezing output\n");
+        buffered_restart(s);
+        return 0;
+    }
 
     DPRINTF("putting %d bytes at %" PRId64 "\n", size, pos);
 
@@ -114,10 +145,7 @@ static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, in
         buffered_append(s, buf, size);
     }
 
-    if (pos == 0 && size == 0) {
-        DPRINTF("unfreezing output\n");
-        s->freeze_output = 0;
-    } else if (s->freeze_output) {
+    if (s->freeze_output) {
         return size;
     }
 
@@ -125,14 +153,6 @@ static int buffered_put_buffer(void *opaque, const uint8_t *buf, int64_t pos, in
     if (error < 0) {
         DPRINTF("buffered flush error. bailing: %s\n", strerror(-error));
         return error;
-    }
-
-    if (pos == 0 && size == 0) {
-        DPRINTF("file is ready\n");
-        if (!qemu_file_rate_limit(s->file)) {
-            DPRINTF("notifying client\n");
-            migrate_fd_put_ready(s->migration_state);
-        }
     }
 
     return size;
@@ -238,7 +258,7 @@ static void buffered_rate_tick(void *opaque)
     if (s->freeze_output)
         return;
 
-    buffered_put_buffer(s, NULL, 0, 0);
+    buffered_restart(s);
 }
 
 static const QEMUFileOps buffered_file_ops = {
