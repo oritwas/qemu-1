@@ -218,6 +218,7 @@ static int usb_qdev_init(DeviceState *qdev)
 static int usb_qdev_exit(DeviceState *qdev)
 {
     USBDevice *dev = USB_DEVICE(qdev);
+    USBDeviceClass *cl = USB_DEVICE_GET_CLASS(dev);
 
     if (dev->attached) {
         usb_device_detach(dev);
@@ -225,6 +226,9 @@ static int usb_qdev_exit(DeviceState *qdev)
     usb_device_handle_destroy(dev);
     if (dev->port) {
         usb_release_port(dev);
+    }
+    if (cl->exit) {
+        cl->exit(dev);
     }
     return 0;
 }

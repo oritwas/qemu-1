@@ -250,6 +250,7 @@ typedef struct USBDeviceClass {
     DeviceClass parent_class;
 
     int (*init)(USBDevice *dev);
+    void (*exit)(USBDevice *dev);
 
     /*
      * Walk (enabled) downstream ports, check for a matching device.
