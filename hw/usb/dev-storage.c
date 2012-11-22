@@ -601,6 +601,7 @@ static int usb_msd_initfn(USBDevice *dev)
     if (!s->scsi_dev) {
         return -1;
     }
+    object_ref(OBJECT(s->scsi_dev));
     s->bus.qbus.allow_hotplug = 0;
     usb_msd_handle_reset(dev);
 
@@ -614,6 +615,16 @@ static int usb_msd_initfn(USBDevice *dev)
     }
 
     return 0;
+}
+
+static void usb_msd_exitfn(USBDevice *dev)
+{
+    MSDState *s = DO_UPCAST(MSDState, dev, dev);
+
+    if (s->scsi_dev) {
+        object_unref(OBJECT(s->scsi_dev));
+        s->scsi_dev = NULL;
+    }
 }
 
 static USBDevice *usb_msd_init(USBBus *bus, const char *filename)
@@ -704,6 +715,7 @@ static void usb_msd_class_initfn(ObjectClass *klass, void *data)
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
     uc->init           = usb_msd_initfn;
+    uc->exit           = usb_msd_exitfn;
     uc->product_desc   = "QEMU USB MSD";
     uc->usb_desc       = &desc;
     uc->cancel_packet  = usb_msd_cancel_io;
