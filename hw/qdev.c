@@ -142,7 +142,7 @@ DeviceState *qdev_try_create(BusState *bus, const char *type)
     }
 
     qdev_set_parent_bus(dev, bus);
-
+    object_unref(OBJECT(dev));
     return dev;
 }
 
@@ -269,7 +269,6 @@ void qdev_init_nofail(DeviceState *dev)
 void qdev_free(DeviceState *dev)
 {
     object_unparent(OBJECT(dev));
-    object_unref(OBJECT(dev));
 }
 
 void qdev_machine_creation_done(void)
@@ -473,6 +472,9 @@ void qbus_create_inplace(BusState *bus, const char *typename,
     bus->parent = parent;
     bus->name = name ? g_strdup(name) : NULL;
     qbus_realize(bus);
+    if (parent) {
+        object_unref(OBJECT(bus));
+    }
 }
 
 BusState *qbus_create(const char *typename, DeviceState *parent, const char *name)
@@ -491,7 +493,6 @@ BusState *qbus_create(const char *typename, DeviceState *parent, const char *nam
 void qbus_free(BusState *bus)
 {
     object_unparent(OBJECT(bus));
-    object_unref(OBJECT(bus));
 }
 
 static char *bus_get_fw_dev_path(BusState *bus, DeviceState *dev)
