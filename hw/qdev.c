@@ -699,23 +699,8 @@ static void device_initfn(Object *obj)
 static void device_finalize(Object *obj)
 {
     DeviceState *dev = DEVICE(obj);
-    BusState *bus;
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
-
-    if (dev->state == DEV_STATE_INITIALIZED) {
-        while (dev->num_child_bus) {
-            bus = QLIST_FIRST(&dev->child_bus);
-            qbus_free(bus);
-        }
-        if (qdev_get_vmsd(dev)) {
-            vmstate_unregister(dev, qdev_get_vmsd(dev), dev);
-        }
-        if (dc->exit) {
-            dc->exit(dev);
-        }
-        if (dev->opts) {
-            qemu_opts_del(dev->opts);
-        }
+    if (dev->opts) {
+        qemu_opts_del(dev->opts);
     }
 }
 
@@ -732,8 +717,24 @@ static void device_class_base_init(ObjectClass *class, void *data)
 static void qdev_remove_from_bus(Object *obj)
 {
     DeviceState *dev = DEVICE(obj);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    BusState *bus;
 
-    bus_remove_child(dev->parent_bus, dev);
+    while (dev->num_child_bus) {
+        bus = QLIST_FIRST(&dev->child_bus);
+        qbus_free(bus);
+    }
+    if (dev->state == DEV_STATE_INITIALIZED) {
+        if (qdev_get_vmsd(dev)) {
+            vmstate_unregister(dev, qdev_get_vmsd(dev), dev);
+        }
+        if (dc->exit) {
+            dc->exit(dev);
+        }
+    }
+    if (dev->parent_bus) {
+        bus_remove_child(dev->parent_bus, dev);
+    }
 }
 
 static void device_class_init(ObjectClass *class, void *data)
