@@ -306,11 +306,6 @@ typedef enum {
 
 typedef int (*pci_hotplug_fn)(DeviceState *qdev, PCIDevice *pci_dev,
                               PCIHotplugState state);
-void pci_bus_new_inplace(PCIBus *bus, DeviceState *parent,
-                         const char *name,
-                         MemoryRegion *address_space_mem,
-                         MemoryRegion *address_space_io,
-                         uint8_t devfn_min);
 PCIBus *pci_bus_new(DeviceState *parent, const char *name,
                     MemoryRegion *address_space_mem,
                     MemoryRegion *address_space_io,

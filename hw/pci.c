@@ -274,13 +274,13 @@ int pci_find_domain(const PCIBus *bus)
     return -1;
 }
 
-void pci_bus_new_inplace(PCIBus *bus, DeviceState *parent,
+static void pci_bus_init(PCIBus *bus, DeviceState *parent,
                          const char *name,
                          MemoryRegion *address_space_mem,
                          MemoryRegion *address_space_io,
                          uint8_t devfn_min)
 {
-    qbus_create_inplace(&bus->qbus, TYPE_PCI_BUS, parent, name);
+    qbus_init(&bus->qbus, parent, name);
     assert(PCI_FUNC(devfn_min) == 0);
     bus->devfn_min = devfn_min;
     bus->address_space_mem = address_space_mem;
@@ -300,10 +300,9 @@ PCIBus *pci_bus_new(DeviceState *parent, const char *name,
 {
     PCIBus *bus;
 
-    bus = g_malloc0(sizeof(*bus));
-    pci_bus_new_inplace(bus, parent, name, address_space_mem,
-                        address_space_io, devfn_min);
-    OBJECT(bus)->free = g_free;
+    bus = object_new(TYPE_PCI_BUS);
+    pci_bus_init(bus, parent, name, address_space_mem,
+                 address_space_io, devfn_min);
     return bus;
 }
 
