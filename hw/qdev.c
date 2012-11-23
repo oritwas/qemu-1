@@ -403,14 +403,16 @@ DeviceState *qdev_find_recursive(BusState *bus, const char *id)
     return NULL;
 }
 
-static void qbus_realize(BusState *bus)
+void qbus_init(BusState *bus, DeviceState *parent, const char *name)
 {
     const char *typename = object_get_typename(OBJECT(bus));
     char *buf;
     int i,len;
 
-    if (bus->name) {
-        /* use supplied name */
+    bus->parent = parent;
+
+    if (name) {
+        bus->name = g_strdup(name);
     } else if (bus->parent && bus->parent->id) {
         /* parent device has id -> use it for bus name */
         len = strlen(bus->parent->id) + 16;
@@ -443,10 +445,7 @@ void qbus_create_inplace(BusState *bus, const char *typename,
                          DeviceState *parent, const char *name)
 {
     object_initialize(bus, typename);
-
-    bus->parent = parent;
-    bus->name = name ? g_strdup(name) : NULL;
-    qbus_realize(bus);
+    qbus_init(bus, parent, name);
 }
 
 BusState *qbus_create(const char *typename, DeviceState *parent, const char *name)
@@ -454,10 +453,7 @@ BusState *qbus_create(const char *typename, DeviceState *parent, const char *nam
     BusState *bus;
 
     bus = BUS(object_new(typename));
-
-    bus->parent = parent;
-    bus->name = name ? g_strdup(name) : NULL;
-    qbus_realize(bus);
+    qbus_init(bus, parent, name);
 
     return bus;
 }
