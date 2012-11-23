@@ -444,6 +444,25 @@ static void qbus_realize(BusState *bus)
     }
 }
 
+static void qbus_remove_children(Object *obj)
+{
+    BusState *bus = BUS(obj);
+    BusChild *kid;
+
+    while ((kid = QTAILQ_FIRST(&bus->children)) != NULL) {
+        DeviceState *dev = kid->child;
+        qdev_free(dev);
+    }
+    if (bus->parent) {
+        QLIST_REMOVE(bus, sibling);
+        bus->parent->num_child_bus--;
+        bus->parent = NULL;
+    } else {
+        assert(bus != sysbus_get_default()); /* main_system_bus is never freed */
+        qemu_unregister_reset(qbus_reset_all_fn, bus);
+    }
+}
+
 void qbus_create_inplace(BusState *bus, const char *typename,
                          DeviceState *parent, const char *name)
 {
@@ -765,22 +784,15 @@ static void qbus_initfn(Object *obj)
     QTAILQ_INIT(&bus->children);
 }
 
+static void bus_class_init(ObjectClass *class, void *data)
+{
+    class->unparent = qbus_remove_children;
+}
+
 static void qbus_finalize(Object *obj)
 {
     BusState *bus = BUS(obj);
-    BusChild *kid;
 
-    while ((kid = QTAILQ_FIRST(&bus->children)) != NULL) {
-        DeviceState *dev = kid->child;
-        qdev_free(dev);
-    }
-    if (bus->parent) {
-        QLIST_REMOVE(bus, sibling);
-        bus->parent->num_child_bus--;
-    } else {
-        assert(bus != sysbus_get_default()); /* main_system_bus is never freed */
-        qemu_unregister_reset(qbus_reset_all_fn, bus);
-    }
     g_free((char *)bus->name);
 }
 
@@ -792,6 +804,7 @@ static const TypeInfo bus_info = {
     .class_size = sizeof(BusClass),
     .instance_init = qbus_initfn,
     .instance_finalize = qbus_finalize,
+    .class_init = bus_class_init,
 };
 
 static void qdev_register_types(void)
